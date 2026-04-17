@@ -35,7 +35,7 @@ for arg in "$@"; do
     --custom)  MODE="custom" ;;
     --no-backup) BACKUP=false ;;
     -h|--help)
-      sed -n '2,17p' "$0"
+      sed -n '2,18p' "$0"
       exit 0
       ;;
     *)
@@ -108,18 +108,37 @@ run_custom_configurator() {
   echo
   # -i forces interactive mode even if something weird happens with the TTY
   # detection; configure.sh will still gracefully fall back if there's no TTY.
-  exec "$CONFIGURE_SCRIPT" -i
+  # Forward --no-backup if the user asked for it at the install.sh level so
+  # the two entry points behave consistently.
+  local -a forward=(-i)
+  if [ "$BACKUP" = false ]; then
+    forward+=(--no-backup)
+  fi
+  exec "$CONFIGURE_SCRIPT" "${forward[@]}"
+}
+
+# Matches configure.sh: /dev/tty must be readable, writable, *and* actually
+# openable. `-r /dev/tty` alone lies in some environments (cron).
+shell_is_interactive() {
+  [ -r /dev/tty ] && [ -w /dev/tty ] && { : > /dev/tty; } 2>/dev/null
 }
 
 choose_mode() {
   if [ -n "$MODE" ]; then return 0; fi
+  if ! shell_is_interactive; then
+    info "No TTY detected — applying Harun's default preset."
+    MODE="default"
+    return 0
+  fi
   echo
   bold "How would you like to install?"
   echo "  1) Use Harun's default settings (recommended)"
   echo "  2) Configure each setting interactively"
   echo "  q) Quit without changing anything"
   echo
-  read -r -p "Choice [1]: " choice
+  # Read from /dev/tty so the prompt still works when the script itself is
+  # piped into bash (the piped stdin is the script, not the user).
+  read -r -p "Choice [1]: " choice < /dev/tty
   choice="${choice:-1}"
   case "$choice" in
     1) MODE="default" ;;
@@ -131,7 +150,11 @@ choose_mode() {
 
 launch_app_prompt() {
   echo
-  read -r -p "Launch Amphetamine now? [Y/n]: " launch
+  if ! shell_is_interactive; then
+    info "No TTY — skipping relaunch prompt. Start Amphetamine manually when ready."
+    return 0
+  fi
+  read -r -p "Launch Amphetamine now? [Y/n]: " launch < /dev/tty
   launch="${launch:-Y}"
   case "$launch" in
     [Yy]*)

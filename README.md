@@ -82,17 +82,19 @@ Pass any setting flag (or `--non-interactive`) and the script writes without pro
 ./scripts/configure.sh --non-interactive --dry-run
 ```
 
-Bool flags accept `yes|no`, `y|n`, `true|false`, or `1|0`. Bare `--flag` means "on"; use `--no-flag` to turn it off. The important knobs:
+Bool flags accept `yes|no`, `y|n`, `true|false`, or `1|0`. Bare `--flag` means "set to yes"; `--no-flag` means "set to no"; `--flag=<value>` is the explicit form. "Preset" below is what the shipped default preset sets — **not** what a bare `--flag` would do.
 
-| Flag                              | Default | What it does                                       |
-| --------------------------------- | ------- | -------------------------------------------------- |
-| `--allow-closed-display-sleep`    | `no`    | `no` = stay awake with lid closed (the whole point) |
-| `--allow-display-sleep`           | `yes`   | Let the display sleep during a session             |
-| `--battery-threshold=<5..95>`     | `30`    | End the session below this battery %               |
-| `--end-on-battery-below`          | `yes`   | Actually enforce the battery threshold             |
-| `--ignore-battery-on-ac`          | `yes`   | Ignore the threshold when plugged in               |
-| `--start-on-launch`               | `yes`   | Start a session when Amphetamine launches          |
-| `--hide-dock-icon`                | `yes`   | Menu-bar only, no Dock icon                        |
+| Flag                              | Preset | What the setting means                              |
+| --------------------------------- | ------ | --------------------------------------------------- |
+| `--allow-closed-display-sleep`    | `no`   | `yes` = let Mac sleep with lid closed. Default `no` keeps it awake. |
+| `--allow-display-sleep`           | `yes`  | Let the display sleep during a session              |
+| `--battery-threshold=<5..95>`     | `30`   | End the session below this battery %                |
+| `--end-on-battery-below`          | `yes`  | Enforce the battery threshold                       |
+| `--ignore-battery-on-ac`          | `yes`  | Ignore the threshold when plugged in                |
+| `--start-on-launch`               | `yes`  | Start a session when Amphetamine launches           |
+| `--hide-dock-icon`                | `yes`  | Menu-bar only, no Dock icon                         |
+
+So `--allow-closed-display-sleep` (bare) would turn that setting **on** — which is the opposite of what the preset ships and the opposite of what this repo is for. Use `--no-allow-closed-display-sleep` or `--allow-closed-display-sleep=no` if you want to be explicit about keeping the Mac awake with the lid closed.
 
 Run `./scripts/configure.sh --help` for the full list (including the advanced notifications / forced-sleep / screen-saver flags).
 

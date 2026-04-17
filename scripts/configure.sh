@@ -87,12 +87,19 @@ to_bool() {
 
 # Assign a bool flag value. If the flag came as `--foo` (no value), use 1.
 # If it came as `--no-foo`, use 0. If it came as `--foo=bar`, parse bar.
-# Usage: set_bool <varname> <raw_value_or_empty> <default_when_bare> <flag_name_for_errors>
+# `--foo=` (empty value after `=`) is rejected — be explicit, don't silently
+# fall through to "bare" behavior.
+# Usage: set_bool <varname> <raw_value_or_empty> <default_when_bare> <had_equals> <flag_name>
 set_bool() {
-  local var="$1" raw="$2" bare_default="$3" flag="$4" parsed
-  if [ -z "$raw" ]; then
+  local var="$1" raw="$2" bare_default="$3" had_equals="$4" flag="$5" parsed
+  if [ "$had_equals" = "0" ]; then
+    # Bare flag, no value supplied — apply the "on" default.
     printf -v "$var" '%s' "$bare_default"
     return 0
+  fi
+  if [ -z "$raw" ]; then
+    err "$flag= was given an empty value (expected yes|no, y|n, true|false, 1|0)"
+    exit 2
   fi
   if parsed="$(to_bool "$raw")"; then
     printf -v "$var" '%s' "$parsed"
@@ -108,13 +115,15 @@ for arg in "$@"; do
   name="${arg%%=*}"
   if [[ "$arg" == *=* ]]; then
     val="${arg#*=}"
+    had_eq=1
   else
     val=""
+    had_eq=0
   fi
 
   case "$name" in
     -h|--help)
-      sed -n '2,42p' "$0"
+      sed -n '2,40p' "$0"
       exit 0
       ;;
     -i|--interactive)     MODE="interactive" ;;
@@ -124,25 +133,25 @@ for arg in "$@"; do
     --no-relaunch)        RELAUNCH=false ;;
 
     # Bool setting flags. The --no-* twin sets the opposite.
-    --allow-closed-display-sleep)      set_bool ALLOW_CLOSED_DISPLAY_SLEEP "$val" 1 "$name" ;;
+    --allow-closed-display-sleep)      set_bool ALLOW_CLOSED_DISPLAY_SLEEP "$val" 1 "$had_eq" "$name" ;;
     --no-allow-closed-display-sleep)   ALLOW_CLOSED_DISPLAY_SLEEP=0 ;;
-    --allow-display-sleep)             set_bool ALLOW_DISPLAY_SLEEP "$val" 1 "$name" ;;
+    --allow-display-sleep)             set_bool ALLOW_DISPLAY_SLEEP "$val" 1 "$had_eq" "$name" ;;
     --no-allow-display-sleep)          ALLOW_DISPLAY_SLEEP=0 ;;
-    --end-on-battery-below)            set_bool END_ON_BATTERY_BELOW "$val" 1 "$name" ;;
+    --end-on-battery-below)            set_bool END_ON_BATTERY_BELOW "$val" 1 "$had_eq" "$name" ;;
     --no-end-on-battery-below)         END_ON_BATTERY_BELOW=0 ;;
-    --ignore-battery-on-ac)            set_bool IGNORE_BATTERY_ON_AC "$val" 1 "$name" ;;
+    --ignore-battery-on-ac)            set_bool IGNORE_BATTERY_ON_AC "$val" 1 "$had_eq" "$name" ;;
     --no-ignore-battery-on-ac)         IGNORE_BATTERY_ON_AC=0 ;;
-    --start-on-launch)                 set_bool START_ON_LAUNCH "$val" 1 "$name" ;;
+    --start-on-launch)                 set_bool START_ON_LAUNCH "$val" 1 "$had_eq" "$name" ;;
     --no-start-on-launch)              START_ON_LAUNCH=0 ;;
-    --hide-dock-icon)                  set_bool HIDE_DOCK_ICON "$val" 1 "$name" ;;
+    --hide-dock-icon)                  set_bool HIDE_DOCK_ICON "$val" 1 "$had_eq" "$name" ;;
     --no-hide-dock-icon)               HIDE_DOCK_ICON=0 ;;
-    --allow-screen-saver)              set_bool ALLOW_SCREEN_SAVER "$val" 1 "$name" ;;
+    --allow-screen-saver)              set_bool ALLOW_SCREEN_SAVER "$val" 1 "$had_eq" "$name" ;;
     --no-allow-screen-saver)           ALLOW_SCREEN_SAVER=0 ;;
-    --end-on-forced-sleep)             set_bool END_ON_FORCED_SLEEP "$val" 1 "$name" ;;
+    --end-on-forced-sleep)             set_bool END_ON_FORCED_SLEEP "$val" 1 "$had_eq" "$name" ;;
     --no-end-on-forced-sleep)          END_ON_FORCED_SLEEP=0 ;;
-    --enable-start-end-notifs)         set_bool ENABLE_START_END_NOTIFS "$val" 1 "$name" ;;
+    --enable-start-end-notifs)         set_bool ENABLE_START_END_NOTIFS "$val" 1 "$had_eq" "$name" ;;
     --no-enable-start-end-notifs)      ENABLE_START_END_NOTIFS=0 ;;
-    --enable-auto-end-notifs)          set_bool ENABLE_AUTO_END_NOTIFS "$val" 1 "$name" ;;
+    --enable-auto-end-notifs)          set_bool ENABLE_AUTO_END_NOTIFS "$val" 1 "$had_eq" "$name" ;;
     --no-enable-auto-end-notifs)       ENABLE_AUTO_END_NOTIFS=0 ;;
 
     # Integer setting flag.
