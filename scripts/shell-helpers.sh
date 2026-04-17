@@ -183,15 +183,21 @@ amph-toggle() {
 
 amph-config() {
   local bid="com.if.Amphetamine"
+  # These must match the keys configure.sh writes and the ones Amphetamine
+  # actually reads. "Launch At Login" is intentionally absent — macOS stores
+  # that via SMLoginItem, not in the prefs plist.
   local keys=(
     'Allow Closed-Display Sleep'
     'Allow Display Sleep'
-    'Battery Threshold'
-    'End Sessions If Battery Is Below Percentage'
+    'Low Battery Percent'
+    'End Session On Low Battery'
     'Ignore Battery on AC'
-    'Launch At Login'
-    'Start Session On Launch'
+    'Start Session At Launch'
     'Hide Dock Icon'
+    'Allow Screen Saver'
+    'End Sessions On Forced Sleep'
+    'Enable Session Notifications'
+    'Enable Session Auto End Notifications'
   )
   printf 'Current Amphetamine prefs (%s):\n' "$bid"
   local k v
@@ -199,4 +205,15 @@ amph-config() {
     v="$(defaults read "$bid" "$k" 2>/dev/null || echo '(unset)')"
     printf '  %-45s = %s\n' "$k" "$v"
   done
+
+  # Login-item state lives in SMLoginItem / macOS service management, not
+  # in the Amphetamine plist. Surface it separately via osascript so users
+  # still get a single-line view of "does this launch at login?".
+  local login_state
+  login_state="$(osascript -e 'tell application "System Events" to get login item "Amphetamine" exists' 2>/dev/null || true)"
+  case "$login_state" in
+    true)   printf '  %-45s = %s\n' 'Launch At Login (SMLoginItem)' 'yes' ;;
+    false)  printf '  %-45s = %s\n' 'Launch At Login (SMLoginItem)' 'no' ;;
+    *)      printf '  %-45s = %s\n' 'Launch At Login (SMLoginItem)' '(unknown — grant System Events access)' ;;
+  esac
 }
