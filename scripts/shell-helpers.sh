@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# shell-helpers.sh — Shell functions for controlling Amphetamine from the CLI.
+#
+# Works under both bash and zsh. Source it from your ~/.bashrc or ~/.zshrc:
+#
+#     source ~/Projects/Amphetamine-MacBook-Settings/scripts/shell-helpers.sh
+#
+# Or run the self-installer once:
+#
+#     ~/Projects/Amphetamine-MacBook-Settings/scripts/shell-helpers.sh install
+#
+# That appends the source line to whichever rc file matches your current
+# shell (both if you use both).
+#
+# After installing, open a new terminal tab and you get these commands:
+#
+#     amph-on         start an indefinite session
+#     amph-off        end the current session
+#     amph-status     show whether a session is active
+#     amph-toggle     flip between on and off
+#     amph-config     show the current plist values
+#
+# The functions shell out to `osascript` and `defaults`, so nothing here
+# is shell-specific — but we guard against zsh's stricter word-splitting
+# so the same file works in both shells.
+
+# ---- Self-installer ----
+# If this file was *executed* (not sourced), run the installer and exit.
+# Detecting sourced-vs-executed portably between bash and zsh:
+#   - bash: ${BASH_SOURCE[0]} != $0 when sourced
+#   - zsh:  $ZSH_EVAL_CONTEXT contains ":file" when sourced
+_amph_is_sourced() {
+  if [ -n "${BASH_VERSION:-}" ]; then
+    [ "${BASH_SOURCE[0]}" != "$0" ]
+  elif [ -n "${ZSH_VERSION:-}" ]; then
+    case "${ZSH_EVAL_CONTEXT:-}" in *:file*) return 0 ;; *) return 1 ;; esac
+  else
+    # Unknown shell — assume sourced so functions get defined.
+    return 0
+  fi
+}
+
+_amph_install_into_rc() {
+  local script_path rc added=0 considered=0
+  script_path="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/$(basename "${BASH_SOURCE[0]:-$0}")"
+  local line="source \"$script_path\"  # amphetamine-helpers"
+
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    # Only touch rc files the user already has. Don't create new ones —
+    # they may intentionally use .bash_profile, .zshenv, a chezmoi/dotfiles
+    # setup, or no rc file at all.
+    [ -f "$rc" ] || continue
+    considered=$((considered + 1))
+    if grep -qF "amphetamine-helpers" "$rc"; then
+      printf '  already installed in %s\n' "$rc"
+    else
+      printf '%s\n' "$line" >> "$rc"
+      printf '  added to %s\n' "$rc"
+      added=$((added + 1))
+    fi
+  done
+
+  if [ "$considered" -eq 0 ]; then
+    local shell_name="${SHELL##*/}"
+    local suggested
+    case "$shell_name" in
+      bash) suggested="$HOME/.bashrc" ;;
+      zsh)  suggested="$HOME/.zshrc" ;;
+      *)    suggested="$HOME/.${shell_name}rc" ;;
+    esac
+    printf '  no ~/.bashrc or ~/.zshrc found — not creating one.\n'
+    printf '  Your login shell looks like %s. To install manually, add this line\n' "$shell_name"
+    printf '  to %s (create it if needed):\n\n    %s\n' "$suggested" "$line"
+    return 0
+  fi
+
+  if [ "$added" -gt 0 ]; then
+    printf '\nOpen a new terminal tab (or run: source ~/.zshrc  /  source ~/.bashrc)\n'
+    printf 'Then try:  amph-status\n'
+  fi
+}
+
+if ! _amph_is_sourced; then
+  case "${1:-help}" in
+    install) _amph_install_into_rc ;;
+    help|-h|--help)
+      sed -n '2,22p' "$0"
+      ;;
+    *)
+      printf 'Usage: %s install\n' "$0" >&2
+      exit 2
+      ;;
+  esac
+  return 0 2>/dev/null || exit 0
+fi
+
+# ---- Sourced path: define the helper functions ----
+
+_amph_running() { pgrep -x Amphetamine >/dev/null 2>&1; }
+
+_amph_start_app_if_needed() {
+  if ! _amph_running; then
+    open -a Amphetamine 2>/dev/null
+    # Wait up to 3s for it to come up
+    local i=0
+    while ! _amph_running; do
+      i=$((i + 1))
+      [ "$i" -ge 6 ] && return 1
+      sleep 0.5
+    done
+  fi
+}
+
+amph-status() {
+  if ! _amph_running; then
+    printf 'Amphetamine: not running\n'
+    return 1
+  fi
+  if pmset -g assertions 2>/dev/null | grep -qi 'Amphetamine'; then
+    printf 'Amphetamine: session ACTIVE\n'
+    pmset -g assertions | awk '/Amphetamine/ {print "  " $0}'
+    return 0
+  else
+    printf 'Amphetamine: running, no active session\n'
+    return 1
+  fi
+}
+
+amph-on() {
+  _amph_start_app_if_needed || { printf 'Failed to launch Amphetamine\n' >&2; return 1; }
+  # Documented infinite-duration options per Amphetamine.sdef:
+  #   "For an infinite duration session, use 0 for duration, and 0 for interval."
+  # See /Applications/Amphetamine.app/Contents/Resources/Amphetamine.sdef
+  local out rc
+  out="$(osascript 2>&1 <<'APPLESCRIPT'
+tell application "Amphetamine"
+  start new session with options {duration:0, interval:0, displaySleepAllowed:true}
+end tell
+APPLESCRIPT
+)"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    printf 'amph-on: AppleScript failed (rc=%s): %s\n' "$rc" "$out" >&2
+    printf 'amph-on: falling back to menu-bar click\n' >&2
+    local fallback_out
+    fallback_out="$(osascript -e 'tell application "System Events" to tell process "Amphetamine" to click menu bar item 1 of menu bar 2' 2>&1)"
+    if [ $? -ne 0 ]; then
+      printf 'amph-on: menu-bar fallback also failed: %s\n' "$fallback_out" >&2
+      return 1
+    fi
+  fi
+  sleep 0.5
+  amph-status
+}
+
+amph-off() {
+  if ! _amph_running; then
+    printf 'Amphetamine: not running\n'
+    return 0
+  fi
+  # Amphetamine's dictionary defines "end session" (not "end all sessions").
+  local out rc
+  out="$(osascript 2>&1 <<'APPLESCRIPT'
+tell application "Amphetamine" to end session
+APPLESCRIPT
+)"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    printf 'amph-off: AppleScript failed (rc=%s): %s\n' "$rc" "$out" >&2
+    return 1
+  fi
+  sleep 0.3
+  amph-status || true
+}
+
+amph-toggle() {
+  if amph-status >/dev/null 2>&1; then
+    amph-off
+  else
+    amph-on
+  fi
+}
+
+amph-config() {
+  local bid="com.if.Amphetamine"
+  # These must match the keys configure.sh writes and the ones Amphetamine
+  # actually reads. "Launch At Login" is intentionally absent — macOS stores
+  # that via SMLoginItem, not in the prefs plist.
+  local keys=(
+    'Allow Closed-Display Sleep'
+    'Allow Display Sleep'
+    'Low Battery Percent'
+    'End Session On Low Battery'
+    'Ignore Battery on AC'
+    'Start Session At Launch'
+    'Hide Dock Icon'
+    'Allow Screen Saver'
+    'End Sessions On Forced Sleep'
+    'Enable Session Notifications'
+    'Enable Session Auto End Notifications'
+  )
+  printf 'Current Amphetamine prefs (%s):\n' "$bid"
+  local k v
+  for k in "${keys[@]}"; do
+    v="$(defaults read "$bid" "$k" 2>/dev/null || echo '(unset)')"
+    printf '  %-45s = %s\n' "$k" "$v"
+  done
+
+  # Login-item state lives in SMLoginItem / macOS service management, not
+  # in the Amphetamine plist. Surface it separately via osascript so users
+  # still get a single-line view of "does this launch at login?".
+  local login_state
+  login_state="$(osascript -e 'tell application "System Events" to get login item "Amphetamine" exists' 2>/dev/null || true)"
+  case "$login_state" in
+    true)   printf '  %-45s = %s\n' 'Launch At Login (SMLoginItem)' 'yes' ;;
+    false)  printf '  %-45s = %s\n' 'Launch At Login (SMLoginItem)' 'no' ;;
+    *)      printf '  %-45s = %s\n' 'Launch At Login (SMLoginItem)' '(unknown — grant System Events access)' ;;
+  esac
+}
