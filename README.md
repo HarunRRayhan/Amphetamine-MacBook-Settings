@@ -2,7 +2,7 @@
 
 [Amphetamine](https://apps.apple.com/us/app/amphetamine/id937984704) settings that keep a MacBook awake with the lid closed while letting the display sleep. Good for overnight syncs, long builds, SSH sessions, and remote access without cooking the laptop or draining the battery.
 
-These are the exact settings I run on my own machine. The repo ships them as a one-command install, but you don't have to take them as-is. There's a non-interactive configurator, an interactive installer, and a shell helper you can source from bash or zsh.
+These are the exact settings I run on my own machine. The repo ships them as a one-command install, but you don't have to take them as-is. There's an interactive installer, a flag-driven configurator for scripted runs, and a shell helper you can source from bash or zsh.
 
 ---
 
@@ -36,49 +36,67 @@ That's it. The installer quits Amphetamine, backs up your current prefs, applies
 
 ## Configure it your way
 
-Two options depending on how hands-on you want to be.
-
-### Option 1: env vars (non-interactive)
-
-`scripts/configure.sh` reads every setting from an environment variable and falls back to my defaults if you don't set one. It runs under bash regardless of your login shell, so you can call it from zsh, fish, nushell, whatever.
+`scripts/configure.sh` runs interactively by default — just launch it and it'll walk you through every setting, one question at a time. Press Enter to accept the default shown in brackets.
 
 ```bash
-# Everything at defaults
 ./scripts/configure.sh
-
-# Lower the battery cutoff to 20%
-BATTERY_THRESHOLD=20 ./scripts/configure.sh
-
-# Show the Dock icon instead of hiding it
-HIDE_DOCK_ICON=0 ./scripts/configure.sh
-
-# Pass values as args instead of env vars, same effect
-./scripts/configure.sh BATTERY_THRESHOLD=25 HIDE_DOCK_ICON=0
-
-# Preview what would change, don't touch anything
-./scripts/configure.sh --dry-run
 ```
 
-All the knobs with their defaults live at the top of `scripts/configure.sh`. The important ones:
+You'll see prompts like:
 
-| Variable                      | Default | What it does                                       |
-| ----------------------------- | ------- | -------------------------------------------------- |
-| `ALLOW_CLOSED_DISPLAY_SLEEP`  | `0`     | `0` = stay awake with lid closed (the whole point) |
-| `ALLOW_DISPLAY_SLEEP`         | `1`     | Let the display sleep during a session             |
-| `BATTERY_THRESHOLD`           | `30`    | End the session below this battery %               |
-| `IGNORE_BATTERY_ON_AC`        | `1`     | Ignore the threshold when plugged in               |
-| `LAUNCH_AT_LOGIN`             | `1`     | Start Amphetamine at login                         |
-| `START_ON_LAUNCH`             | `1`     | Start a session when Amphetamine launches          |
-| `HIDE_DOCK_ICON`              | `1`     | Menu-bar only, no Dock icon                        |
+```
+Stay awake with the lid closed? (the core use case) [Y/n]:
+Let the display sleep during a session? (saves battery and heat) [Y/n]:
+Auto-end the session when battery gets low? [Y/n]:
+Battery percent to end the session at (5–95)? [30]:
+...
+```
 
-### Option 2: interactive
+At the end you'll see the plan and a final "Apply these settings?" confirmation.
+
+The installer has the same entry point if you'd rather start there and pick "Configure each setting interactively":
 
 ```bash
 ./scripts/install.sh
-# pick 2) Configure my own settings interactively
+# pick 2) Configure each setting interactively
 ```
 
-Walks you through battery threshold, lid-closed behavior, launch-at-login, and default duration. Good if you don't want to read the flag list.
+### Non-interactive / scripted runs
+
+Pass any setting flag (or `--non-interactive`) and the script writes without prompting — useful for provisioning, dotfiles, or remote runs over SSH without a TTY. If you pipe the script through `bash` (no TTY), it falls back to non-interactive automatically.
+
+```bash
+# Apply defaults without prompting
+./scripts/configure.sh --non-interactive
+
+# Tweak just the battery cutoff and keep everything else at defaults
+./scripts/configure.sh --battery-threshold=25
+
+# Show the Dock icon instead of hiding it
+./scripts/configure.sh --no-hide-dock-icon
+
+# Combine flags — any setting flag implies non-interactive
+./scripts/configure.sh --battery-threshold=20 --no-allow-display-sleep --no-hide-dock-icon
+
+# Preview what would change, don't touch anything
+./scripts/configure.sh --non-interactive --dry-run
+```
+
+Bool flags accept `yes|no`, `y|n`, `true|false`, or `1|0`. Bare `--flag` means "on"; use `--no-flag` to turn it off. The important knobs:
+
+| Flag                              | Default | What it does                                       |
+| --------------------------------- | ------- | -------------------------------------------------- |
+| `--allow-closed-display-sleep`    | `no`    | `no` = stay awake with lid closed (the whole point) |
+| `--allow-display-sleep`           | `yes`   | Let the display sleep during a session             |
+| `--battery-threshold=<5..95>`     | `30`    | End the session below this battery %               |
+| `--end-on-battery-below`          | `yes`   | Actually enforce the battery threshold             |
+| `--ignore-battery-on-ac`          | `yes`   | Ignore the threshold when plugged in               |
+| `--start-on-launch`               | `yes`   | Start a session when Amphetamine launches          |
+| `--hide-dock-icon`                | `yes`   | Menu-bar only, no Dock icon                        |
+
+Run `./scripts/configure.sh --help` for the full list (including the advanced notifications / forced-sleep / screen-saver flags).
+
+> **On `Launch At Login`:** macOS manages this via SMLoginItem, not the plist — so there's no flag for it here. Toggle it once in Amphetamine's UI; `amph-config` will show the state.
 
 If you'd rather click through the Amphetamine UI instead, see [`docs/MANUAL-SETUP.md`](docs/MANUAL-SETUP.md).
 
@@ -144,8 +162,8 @@ Launch Amphetamine once after install so macOS creates the sandbox container, th
 │   ├── default.plist               # My default settings (binary plist)
 │   └── default.xml.plist           # Same settings in human-readable XML
 ├── scripts/
-│   ├── install.sh                  # Interactive installer (default or custom)
-│   ├── configure.sh                # Non-interactive, env-var-driven configurator
+│   ├── install.sh                  # Installer (apply default preset, or hand off to configure.sh)
+│   ├── configure.sh                # Configurator — interactive by default, flag-driven for scripted runs
 │   ├── shell-helpers.sh            # amph-on / amph-off / amph-status for bash + zsh
 │   ├── export.sh                   # Export your current settings to a plist
 │   └── reset.sh                    # Reset Amphetamine to its own defaults
