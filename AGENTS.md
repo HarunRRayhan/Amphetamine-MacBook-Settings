@@ -43,7 +43,12 @@ Flag conventions in `configure.sh`:
 - `-i` / `--interactive` forces prompting; `-N` / `--non-interactive` forces the flag-driven path.
 - `-n` / `--dry-run` prints the plan without writing.
 - Any setting flag implies `--non-interactive` (unless `-i` is also passed).
+- `--no-gum` disables the optional gum-powered TUI.
 - `./scripts/configure.sh --help` lists every flag.
+
+### Optional TUI: gum
+
+Both `install.sh` and `configure.sh` auto-detect [`gum`](https://github.com/charmbracelet/gum) and use it for a nicer interactive experience (arrow-key menus, styled confirms). When gum is missing, the scripts fall back to plain `read` prompts — no dependency is required to run the scripts. If the user has Homebrew but not gum, the scripts prompt once on first interactive run to offer `brew install gum`. Agents should not install gum on the user's behalf; let the script's prompt (or the user) drive that.
 
 Note: `Launch At Login` is not a plist key. macOS stores it via SMLoginItem, so there's no flag for it. It's toggled in Amphetamine's UI; `amph-config` surfaces the state via `tell application "System Events" to get login item "Amphetamine" exists`.
 

@@ -100,6 +100,16 @@ Run `./scripts/configure.sh --help` for the full list (including the advanced no
 
 > **On `Launch At Login`:** macOS manages this via SMLoginItem, not the plist — so there's no flag for it here. Toggle it once in Amphetamine's UI; `amph-config` will show the state.
 
+### Nicer TUI (optional)
+
+The interactive walkthrough auto-detects [`gum`](https://github.com/charmbracelet/gum) (from Charm.sh) and uses it for arrow-key menus, styled prompts, and spinners. If `gum` is missing but Homebrew is available, the installer offers to `brew install` it for you. If you decline — or don't have Homebrew — everything falls back to plain `read` prompts. No dependency required.
+
+```bash
+brew install gum                  # opt in ahead of time
+./scripts/install.sh --no-gum     # force plain prompts even if gum is installed
+./scripts/configure.sh --no-gum
+```
+
 If you'd rather click through the Amphetamine UI instead, see [`docs/MANUAL-SETUP.md`](docs/MANUAL-SETUP.md).
 
 ---

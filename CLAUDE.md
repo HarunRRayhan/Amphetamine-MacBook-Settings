@@ -21,7 +21,12 @@ If it's ambiguous which one they want, ask. Default to option 1 when they say "i
 - Dry run: `-n` / `--dry-run`
 - Bool flags: `--foo`, `--foo=yes|no|1|0|true|false`, or `--no-foo`
 - Auto-falls back to non-interactive when there's no controlling TTY (piped, cron, SSH without `-t`)
+- `--no-gum` disables the gum-powered TUI even when gum is installed
 - `./scripts/configure.sh --help` lists every flag
+
+### Optional TUI: gum
+
+Both `install.sh` and `configure.sh` auto-detect [`gum`](https://github.com/charmbracelet/gum). When present, interactive prompts become arrow-key menus and styled confirms; when missing, the scripts fall back to plain `read` prompts — no dependency required. If the user has Homebrew but not gum, the script itself offers to `brew install gum` on first interactive run. Don't run `brew install gum` yourself; let the script's prompt (or the user) drive that.
 
 ### On `Launch At Login`
 

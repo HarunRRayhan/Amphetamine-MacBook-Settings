@@ -35,7 +35,12 @@
 #   -n, --dry-run           print the plan, write nothing
 #       --no-backup         skip backing up current prefs
 #       --no-relaunch       don't relaunch Amphetamine after writing
+#       --no-gum            force plain prompts even if `gum` is installed
 #   -h, --help              this message
+#
+# Interactive mode auto-detects `gum` (https://github.com/charmbracelet/gum)
+# and uses it for a nicer TUI when present. `brew install gum` to enable.
+# Falls back to plain `read` prompts otherwise — no dependency required.
 #
 # Defaults match settings/default.plist.
 
@@ -64,6 +69,7 @@ ENABLE_AUTO_END_NOTIFS=1       # 1 = notify when a session auto-ends (e.g. batte
 BACKUP=true
 DRY_RUN=false
 RELAUNCH=true
+USE_GUM=auto   # auto = use gum if available; "no" disables it even if installed
 # MODE is "" until we know. Any setting flag flips it to "non-interactive".
 # -i/-N override. Unset (and no setting flags) → interactive.
 MODE=""
@@ -123,7 +129,7 @@ for arg in "$@"; do
 
   case "$name" in
     -h|--help)
-      sed -n '2,40p' "$0"
+      sed -n '2,45p' "$0"
       exit 0
       ;;
     -i|--interactive)     MODE="interactive" ;;
@@ -131,6 +137,7 @@ for arg in "$@"; do
     -n|--dry-run)         DRY_RUN=true ;;
     --no-backup)          BACKUP=false ;;
     --no-relaunch)        RELAUNCH=false ;;
+    --no-gum)             USE_GUM=no ;;
 
     # Bool setting flags. The --no-* twin sets the opposite.
     --allow-closed-display-sleep)      set_bool ALLOW_CLOSED_DISPLAY_SLEEP "$val" 1 "$had_eq" "$name" ;;
@@ -224,37 +231,150 @@ if [ ! -d "/Applications/$APP_NAME.app" ]; then
   exit 1
 fi
 
-# ---- Interactive prompts ----
-ask_bool() {
-  # $1 = prompt, $2 = var name
-  local prompt="$1" var="$2" current="${!2}" reply default_hint parsed
-  case "$current" in
-    1) default_hint="Y/n" ;;
-    *) default_hint="y/N" ;;
+# ---- UI layer (gum if available, plain `read` fallback) ----
+# gum is Charm.sh's TUI toolkit: https://github.com/charmbracelet/gum
+# Zero-dep by default: if gum is missing and we're interactive with Homebrew
+# available, we offer to install it; otherwise we fall back to plain prompts.
+have_gum() {
+  [ "$USE_GUM" != "no" ] && command -v gum >/dev/null 2>&1
+}
+
+# Offer to install gum via Homebrew. Silent no-op if:
+#   - user passed --no-gum
+#   - gum is already installed
+#   - brew isn't available (we don't pull in Homebrew on the user's behalf)
+#   - we're not on a TTY (can't ask)
+# Called once before interactive UI runs.
+maybe_offer_gum_install() {
+  [ "$USE_GUM" = "no" ] && return 0
+  command -v gum >/dev/null 2>&1 && return 0
+  command -v brew >/dev/null 2>&1 || return 0
+  shell_is_interactive || return 0
+  echo
+  info "Tip: 'gum' gives this walkthrough a nicer TUI (checkboxes, spinners, etc.)."
+  info "     https://github.com/charmbracelet/gum"
+  local reply
+  if ! read -r -p "  Install it now via Homebrew? [y/N]: " reply < /dev/tty; then
+    USE_GUM=no
+    return 0
+  fi
+  case "${reply:-N}" in
+    [Yy]|[Yy][Ee][Ss])
+      info "Running: brew install gum"
+      if brew install gum; then
+        ok "Installed gum."
+      else
+        warn "brew install gum failed — continuing with plain prompts."
+        USE_GUM=no
+      fi
+      ;;
+    *)
+      USE_GUM=no
+      info "Skipping gum — using plain prompts. Pass --no-gum to skip this prompt next time."
+      ;;
+  esac
+  echo
+}
+
+# Framed banner at the top of the walkthrough. Fallback: bold line + info.
+ui_banner() {
+  local title="$1" subtitle="${2:-}"
+  if have_gum; then
+    if [ -n "$subtitle" ]; then
+      gum style --border normal --margin "0 0" --padding "0 2" \
+        --border-foreground 212 "$title" "$subtitle"
+    else
+      gum style --border normal --margin "0 0" --padding "0 2" \
+        --border-foreground 212 "$title"
+    fi
+    echo
+  else
+    bold "$title"
+    [ -n "$subtitle" ] && info "$subtitle"
+    echo
+  fi
+}
+
+# ui_confirm <prompt> <default: yes|no>  → returns 0 for yes, 1 for no.
+# Wraps `gum confirm` (which also returns 0/1) and falls back to plain read.
+# If gum is killed by a signal (e.g. Ctrl+C → 130), we abort the whole script
+# instead of silently continuing as if the user answered "no".
+ui_confirm() {
+  local prompt="$1" default="${2:-yes}" reply default_hint rc
+  if have_gum; then
+    if [ "$default" = "yes" ]; then
+      gum confirm --default=true  "$prompt"
+    else
+      gum confirm --default=false "$prompt"
+    fi
+    rc=$?
+    if [ "$rc" -ge 128 ]; then
+      echo
+      exit "$rc"
+    fi
+    return "$rc"
+  fi
+  case "$default" in
+    yes) default_hint="Y/n" ;;
+    *)   default_hint="y/N" ;;
   esac
   while :; do
-    # Read directly from /dev/tty so prompts work even if stdin was piped.
     if ! read -r -p "  $prompt [$default_hint]: " reply < /dev/tty; then
       echo
       return 1
     fi
-    reply="${reply:-$current}"
-    if parsed="$(to_bool "$reply")"; then
-      printf -v "$var" '%s' "$parsed"
-      return 0
-    fi
-    warn "Please answer y or n (or press Enter to keep the default)."
+    reply="${reply:-$default}"
+    case "$reply" in
+      1|true|TRUE|True|yes|YES|Yes|y|Y) return 0 ;;
+      0|false|FALSE|False|no|NO|No|n|N) return 1 ;;
+      *) warn "Please answer y or n (or press Enter to keep the default)." ;;
+    esac
   done
+}
+
+# ui_input <prompt> <default>  → echoes the chosen value on stdout.
+# Ctrl+C inside `gum input` (exit >=128) aborts the script rather than being
+# silently treated as "keep the default".
+ui_input() {
+  local prompt="$1" default="$2" reply rc
+  if have_gum; then
+    reply="$(gum input --prompt "$prompt " --placeholder "$default" --value "$default")"
+    rc=$?
+    if [ "$rc" -ge 128 ]; then
+      echo >&2
+      exit "$rc"
+    fi
+    # gum returns empty if the user deletes the prefilled value; fall back.
+    printf '%s' "${reply:-$default}"
+    return 0
+  fi
+  if ! read -r -p "  $prompt [$default]: " reply < /dev/tty; then
+    printf '%s' "$default"
+    return 0
+  fi
+  printf '%s' "${reply:-$default}"
+}
+
+# ---- Interactive prompts ----
+ask_bool() {
+  # $1 = prompt, $2 = var name
+  local prompt="$1" var="$2" current="${!2}" default_kw
+  case "$current" in
+    1) default_kw="yes" ;;
+    *) default_kw="no"  ;;
+  esac
+  if ui_confirm "$prompt" "$default_kw"; then
+    printf -v "$var" '%s' 1
+  else
+    printf -v "$var" '%s' 0
+  fi
 }
 
 ask_int() {
   # $1 = prompt, $2 = var name, $3 = min, $4 = max
   local prompt="$1" var="$2" min="$3" max="$4" current="${!2}" reply
   while :; do
-    if ! read -r -p "  $prompt [$current]: " reply < /dev/tty; then
-      echo
-      return 1
-    fi
+    reply="$(ui_input "$prompt" "$current")"
     reply="${reply:-$current}"
     if [[ "$reply" =~ ^[0-9]+$ ]] && (( reply >= min && reply <= max )); then
       printf -v "$var" '%s' "$reply"
@@ -265,9 +385,8 @@ ask_int() {
 }
 
 run_interactive() {
-  bold "Amphetamine configuration — interactive walkthrough"
-  info "Press Enter to keep the default shown in brackets."
-  echo
+  ui_banner "Amphetamine configuration — interactive walkthrough" \
+            "Press Enter to keep the default shown in brackets."
 
   # Asking the user about "Allow Closed-Display Sleep" directly would read
   # weird — people think in terms of "stay awake with lid closed". Translate
@@ -306,6 +425,7 @@ run_interactive() {
 }
 
 if [ "$MODE" = "interactive" ]; then
+  maybe_offer_gum_install
   run_interactive
 fi
 
@@ -331,16 +451,10 @@ fi
 
 # Interactive mode confirms before writing.
 if [ "$MODE" = "interactive" ] && [ -r /dev/tty ]; then
-  reply=""
-  read -r -p "  Apply these settings? [Y/n]: " reply < /dev/tty || true
-  reply="${reply:-Y}"
-  case "$reply" in
-    [Yy]|[Yy][Ee][Ss]) ;;
-    *)
-      info "Aborted. Nothing was written."
-      exit 0
-      ;;
-  esac
+  if ! ui_confirm "Apply these settings?" "yes"; then
+    info "Aborted. Nothing was written."
+    exit 0
+  fi
 fi
 
 # ---- Quit Amphetamine (required before writing prefs) ----
