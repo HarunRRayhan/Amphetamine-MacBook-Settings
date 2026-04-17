@@ -38,7 +38,9 @@ fi
 if pgrep -xq "$APP_NAME"; then
   osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
   sleep 1
-  pgrep -xq "$APP_NAME" && killall "$APP_NAME" >/dev/null 2>&1 || true
+  if pgrep -xq "$APP_NAME"; then
+    killall "$APP_NAME" >/dev/null 2>&1 || true
+  fi
 fi
 
 if [ "$BACKUP" = true ]; then
