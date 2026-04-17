@@ -41,21 +41,38 @@ _amph_is_sourced() {
 }
 
 _amph_install_into_rc() {
-  local script_path rc added=0
+  local script_path rc added=0 considered=0
   script_path="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/$(basename "${BASH_SOURCE[0]:-$0}")"
   local line="source \"$script_path\"  # amphetamine-helpers"
 
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    if [ -f "$rc" ] || [ "$(basename "$rc")" = ".zshrc" ] || [ "$(basename "$rc")" = ".bashrc" ]; then
-      if [ -f "$rc" ] && grep -qF "amphetamine-helpers" "$rc"; then
-        printf '  already installed in %s\n' "$rc"
-      else
-        printf '%s\n' "$line" >> "$rc"
-        printf '  added to %s\n' "$rc"
-        added=$((added + 1))
-      fi
+    # Only touch rc files the user already has. Don't create new ones —
+    # they may intentionally use .bash_profile, .zshenv, a chezmoi/dotfiles
+    # setup, or no rc file at all.
+    [ -f "$rc" ] || continue
+    considered=$((considered + 1))
+    if grep -qF "amphetamine-helpers" "$rc"; then
+      printf '  already installed in %s\n' "$rc"
+    else
+      printf '%s\n' "$line" >> "$rc"
+      printf '  added to %s\n' "$rc"
+      added=$((added + 1))
     fi
   done
+
+  if [ "$considered" -eq 0 ]; then
+    local shell_name="${SHELL##*/}"
+    local suggested
+    case "$shell_name" in
+      bash) suggested="$HOME/.bashrc" ;;
+      zsh)  suggested="$HOME/.zshrc" ;;
+      *)    suggested="$HOME/.${shell_name}rc" ;;
+    esac
+    printf '  no ~/.bashrc or ~/.zshrc found — not creating one.\n'
+    printf '  Your login shell looks like %s. To install manually, add this line\n' "$shell_name"
+    printf '  to %s (create it if needed):\n\n    %s\n' "$suggested" "$line"
+    return 0
+  fi
 
   if [ "$added" -gt 0 ]; then
     printf '\nOpen a new terminal tab (or run: source ~/.zshrc  /  source ~/.bashrc)\n'

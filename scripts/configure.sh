@@ -35,18 +35,43 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_DIR="$REPO_DIR/scripts/backups"
 
 # ---- Defaults (override via env vars or KEY=VALUE args) ----
+# Note: "Launch At Login" isn't a plist key — macOS manages that flag via
+# SMLoginItem when you toggle it in Amphetamine's UI. Not configurable here.
 : "${ALLOW_CLOSED_DISPLAY_SLEEP:=0}"   # 0 = stay awake with lid closed  (the point of this repo)
 : "${ALLOW_DISPLAY_SLEEP:=1}"          # 1 = let the internal display sleep during a session
 : "${BATTERY_THRESHOLD:=30}"           # end session when battery drops below this %
 : "${END_ON_BATTERY_BELOW:=1}"         # 1 = enforce BATTERY_THRESHOLD, 0 = never auto-end on battery
 : "${IGNORE_BATTERY_ON_AC:=1}"         # 1 = ignore threshold when plugged in
-: "${LAUNCH_AT_LOGIN:=1}"              # 1 = start Amphetamine at login
 : "${START_ON_LAUNCH:=1}"              # 1 = start a session when Amphetamine launches
 : "${HIDE_DOCK_ICON:=1}"               # 1 = menu-bar only, no Dock icon
 : "${ALLOW_SCREEN_SAVER:=0}"           # 0 = suppress the screen saver during sessions
 : "${END_ON_FORCED_SLEEP:=0}"          # 0 = manual sleep does NOT auto-end the session
 : "${ENABLE_START_END_NOTIFS:=0}"      # 0 = quiet start/end notifications
 : "${ENABLE_AUTO_END_NOTIFS:=1}"       # 1 = notify when a session auto-ends (e.g. battery)
+
+# Whitelist of variable names accepted as KEY=VALUE args. Anything else
+# is rejected before it can end up in the environment.
+ALLOWED_KEYS=(
+  ALLOW_CLOSED_DISPLAY_SLEEP
+  ALLOW_DISPLAY_SLEEP
+  BATTERY_THRESHOLD
+  END_ON_BATTERY_BELOW
+  IGNORE_BATTERY_ON_AC
+  START_ON_LAUNCH
+  HIDE_DOCK_ICON
+  ALLOW_SCREEN_SAVER
+  END_ON_FORCED_SLEEP
+  ENABLE_START_END_NOTIFS
+  ENABLE_AUTO_END_NOTIFS
+)
+
+_key_is_allowed() {
+  local candidate="$1" k
+  for k in "${ALLOWED_KEYS[@]}"; do
+    [ "$candidate" = "$k" ] && return 0
+  done
+  return 1
+}
 
 BACKUP=true
 DRY_RUN=false
@@ -63,9 +88,16 @@ for arg in "$@"; do
       exit 0
       ;;
     *=*)
-      # KEY=VALUE pair — export into current shell
+      # KEY=VALUE pair. Split at the first '=' and whitelist-check the key
+      # before exporting. `export "$arg"` assigns the literal value, so
+      # something like FOO='bar; rm -rf /' gets stored, not executed.
+      key="${arg%%=*}"
+      if ! _key_is_allowed "$key"; then
+        echo "Unknown configuration key: $key" >&2
+        echo "Allowed keys: ${ALLOWED_KEYS[*]}" >&2
+        exit 2
+      fi
       export "$arg"
-      eval "$(printf '%s\n' "$arg")"
       ;;
     *)
       echo "Unknown argument: $arg" >&2
@@ -103,7 +135,7 @@ normalize_bool() {
 }
 
 for v in ALLOW_CLOSED_DISPLAY_SLEEP ALLOW_DISPLAY_SLEEP END_ON_BATTERY_BELOW \
-         IGNORE_BATTERY_ON_AC LAUNCH_AT_LOGIN START_ON_LAUNCH HIDE_DOCK_ICON \
+         IGNORE_BATTERY_ON_AC START_ON_LAUNCH HIDE_DOCK_ICON \
          ALLOW_SCREEN_SAVER END_ON_FORCED_SLEEP ENABLE_START_END_NOTIFS \
          ENABLE_AUTO_END_NOTIFS; do
   validate_bool "$v" "${!v}"
@@ -127,11 +159,10 @@ fi
 bold "Amphetamine configuration plan"
 info "Allow Closed-Display Sleep    = $ALLOW_CLOSED_DISPLAY_SLEEP  (0 = stay awake with lid closed)"
 info "Allow Display Sleep           = $ALLOW_DISPLAY_SLEEP"
-info "Battery Threshold             = ${BATTERY_THRESHOLD}%"
-info "End Sessions If Battery Below = $END_ON_BATTERY_BELOW"
+info "Low Battery Percent           = ${BATTERY_THRESHOLD}%"
+info "End Session On Low Battery    = $END_ON_BATTERY_BELOW"
 info "Ignore Battery on AC          = $IGNORE_BATTERY_ON_AC"
-info "Launch At Login               = $LAUNCH_AT_LOGIN"
-info "Start Session On Launch       = $START_ON_LAUNCH"
+info "Start Session At Launch       = $START_ON_LAUNCH"
 info "Hide Dock Icon                = $HIDE_DOCK_ICON"
 info "Allow Screen Saver            = $ALLOW_SCREEN_SAVER"
 info "End On Forced Sleep           = $END_ON_FORCED_SLEEP"
@@ -177,11 +208,10 @@ write_int()  { defaults write "$BUNDLE_ID" "$1" -int     "$2"; }
 
 write_bool 'Allow Closed-Display Sleep'          "$ALLOW_CLOSED_DISPLAY_SLEEP"
 write_bool 'Allow Display Sleep'                 "$ALLOW_DISPLAY_SLEEP"
-write_int  'Battery Threshold'                   "$BATTERY_THRESHOLD"
-write_bool 'End Sessions If Battery Is Below Percentage' "$END_ON_BATTERY_BELOW"
+write_int  'Low Battery Percent'                 "$BATTERY_THRESHOLD"
+write_bool 'End Session On Low Battery'          "$END_ON_BATTERY_BELOW"
 write_bool 'Ignore Battery on AC'                "$IGNORE_BATTERY_ON_AC"
-write_bool 'Launch At Login'                     "$LAUNCH_AT_LOGIN"
-write_bool 'Start Session On Launch'             "$START_ON_LAUNCH"
+write_bool 'Start Session At Launch'             "$START_ON_LAUNCH"
 write_bool 'Hide Dock Icon'                      "$HIDE_DOCK_ICON"
 write_bool 'Allow Screen Saver'                  "$ALLOW_SCREEN_SAVER"
 write_bool 'End Sessions On Forced Sleep'        "$END_ON_FORCED_SLEEP"
