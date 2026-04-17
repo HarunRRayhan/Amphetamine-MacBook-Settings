@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Stub for `pgrep`. Always reports "no matching process" so configure.sh /
+# install.sh skip the "quit Amphetamine" branch.
+echo "pgrep $*" >> "${STUB_LOG:-/dev/null}"
+exit 1

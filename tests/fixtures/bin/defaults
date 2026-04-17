@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Stub for macOS `defaults`. Logs the invocation and returns success so
+# configure.sh's "apply" section behaves as if writes succeeded.
+#
+# Note: when bats tests assert *only* on parsing / plan output, they should
+# use --dry-run so we never reach the `defaults` section at all. This stub
+# exists so the non-dry-run path doesn't crash if a test exercises it.
+echo "defaults $*" >> "${STUB_LOG:-/dev/null}"
+
+case "${1:-}" in
+  export)
+    # `defaults export <bundle> <path>` — create an empty plist so downstream
+    # steps (like backup) don't error out.
+    : > "${3:-/dev/null}" 2>/dev/null || true
+    ;;
+esac
+
+exit 0

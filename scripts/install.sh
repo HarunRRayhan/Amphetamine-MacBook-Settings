@@ -31,6 +31,8 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_PLIST="$REPO_DIR/settings/default.plist"
 CONFIGURE_SCRIPT="$REPO_DIR/scripts/configure.sh"
 BACKUP_DIR="$REPO_DIR/scripts/backups"
+# Test seam: lets CI (and unusual installs) point at a different Amphetamine bundle.
+APP_PATH="${AMPHETAMINE_APP_PATH:-/Applications/$APP_NAME.app}"
 
 MODE=""
 BACKUP=true
@@ -181,8 +183,8 @@ ui_choose() {
 }
 
 ensure_app_installed() {
-  if [ ! -d "/Applications/$APP_NAME.app" ]; then
-    err "Amphetamine is not installed at /Applications/$APP_NAME.app"
+  if [ ! -d "$APP_PATH" ]; then
+    err "Amphetamine is not installed at $APP_PATH"
     info "Install it from the Mac App Store first: https://apps.apple.com/us/app/amphetamine/id937984704"
     exit 1
   fi

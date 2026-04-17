@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Stub for macOS `open`. Relaunching Amphetamine is a no-op in tests.
+echo "open $*" >> "${STUB_LOG:-/dev/null}"
+exit 0

@@ -91,6 +91,11 @@ if ! _amph_is_sourced; then
       exit 2
       ;;
   esac
+  # We're executed, not sourced — exit cleanly. The `return 0 2>/dev/null`
+  # is defensive: if we ever end up here inside a sourced context despite
+  # the _amph_is_sourced check (e.g. future shell quirks), return instead
+  # of exiting the user's shell.
+  # shellcheck disable=SC2317
   return 0 2>/dev/null || exit 0
 fi
 
@@ -142,9 +147,10 @@ APPLESCRIPT
   if [ "$rc" -ne 0 ]; then
     printf 'amph-on: AppleScript failed (rc=%s): %s\n' "$rc" "$out" >&2
     printf 'amph-on: falling back to menu-bar click\n' >&2
-    local fallback_out
+    local fallback_out fallback_rc
     fallback_out="$(osascript -e 'tell application "System Events" to tell process "Amphetamine" to click menu bar item 1 of menu bar 2' 2>&1)"
-    if [ $? -ne 0 ]; then
+    fallback_rc=$?
+    if [ "$fallback_rc" -ne 0 ]; then
       printf 'amph-on: menu-bar fallback also failed: %s\n' "$fallback_out" >&2
       return 1
     fi

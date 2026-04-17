@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Stub for `osascript`. Logs then exits 0 — the real script is only used to
+# tell Amphetamine to quit / check SMLoginItem state, neither of which we
+# want to actually do in tests.
+echo "osascript $*" >> "${STUB_LOG:-/dev/null}"
+exit 0
