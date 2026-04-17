@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # install.sh — Interactive installer for Amphetamine settings.
-# Lets the user pick Harun's default preset, or configure their own.
+# Lets the user pick Harun's default preset, or hand off to configure.sh
+# for per-setting customization.
 #
 # Safe by design:
 #   - Quits Amphetamine before writing prefs (so they don't get overwritten on quit).
@@ -10,8 +11,11 @@
 # Usage:
 #   ./scripts/install.sh
 #   ./scripts/install.sh --default       # skip menu, apply default preset
-#   ./scripts/install.sh --custom        # skip menu, run interactive config
-#   ./scripts/install.sh --no-backup     # skip the backup step
+#   ./scripts/install.sh --custom        # skip menu, run configure.sh (interactive)
+#   ./scripts/install.sh --no-backup     # skip the backup step (default preset only)
+#
+# For fully scripted runs (flags, no prompts) use configure.sh directly:
+#   ./scripts/configure.sh --non-interactive --battery-threshold=25 ...
 
 set -euo pipefail
 
@@ -19,6 +23,7 @@ BUNDLE_ID="com.if.Amphetamine"
 APP_NAME="Amphetamine"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_PLIST="$REPO_DIR/settings/default.plist"
+CONFIGURE_SCRIPT="$REPO_DIR/scripts/configure.sh"
 BACKUP_DIR="$REPO_DIR/scripts/backups"
 
 MODE=""
@@ -30,7 +35,7 @@ for arg in "$@"; do
     --custom)  MODE="custom" ;;
     --no-backup) BACKUP=false ;;
     -h|--help)
-      sed -n '2,12p' "$0"
+      sed -n '2,18p' "$0"
       exit 0
       ;;
     *)
@@ -91,79 +96,49 @@ apply_default_preset() {
   ok "Imported Harun's default preset."
 }
 
-write_key_bool() {
-  local key="$1" value="$2"
-  defaults write "$BUNDLE_ID" "$key" -bool "$value"
-}
-
-write_key_int() {
-  local key="$1" value="$2"
-  defaults write "$BUNDLE_ID" "$key" -int "$value"
-}
-
-# These keys are the ones this repo cares about. Full list is in docs/SETTINGS-REFERENCE.md.
-apply_custom_preset() {
-  bold ""
-  bold "Custom configuration"
-  info "Press Enter on any prompt to keep the default in [brackets]."
-  echo
-
-  read -r -p "Stay awake when lid is closed? [Y/n]: " stay_awake
-  stay_awake="${stay_awake:-Y}"
-  case "$stay_awake" in
-    [Yy]*) write_key_bool "Allow Closed-Display Sleep" false ;;
-    *)     write_key_bool "Allow Closed-Display Sleep" true ;;
-  esac
-
-  read -r -p "Let the display sleep during a session? [Y/n]: " display_sleep
-  display_sleep="${display_sleep:-Y}"
-  case "$display_sleep" in
-    [Yy]*) write_key_bool "Allow Display Sleep" true ;;
-    *)     write_key_bool "Allow Display Sleep" false ;;
-  esac
-
-  read -r -p "Battery %% below which the session should auto-end (1-99) [30]: " batt
-  batt="${batt:-30}"
-  if ! [[ "$batt" =~ ^[0-9]+$ ]] || [ "$batt" -lt 1 ] || [ "$batt" -gt 99 ]; then
-    err "Invalid battery threshold: $batt"
-    exit 2
+# Custom path: hand off to configure.sh, which is interactive by default and
+# knows the correct plist keys. It does its own app check + quit + backup +
+# relaunch, so we exec into it without duplicating that work here.
+run_custom_configurator() {
+  if [ ! -x "$CONFIGURE_SCRIPT" ]; then
+    err "configure.sh not found or not executable: $CONFIGURE_SCRIPT"
+    exit 1
   fi
-  write_key_bool "End Sessions If Battery Is Below Percentage" true
-  write_key_int  "Battery Threshold" "$batt"
+  info "Handing off to configure.sh for per-setting customization..."
+  echo
+  # -i forces interactive mode even if something weird happens with the TTY
+  # detection; configure.sh will still gracefully fall back if there's no TTY.
+  # Forward --no-backup if the user asked for it at the install.sh level so
+  # the two entry points behave consistently.
+  local -a forward=(-i)
+  if [ "$BACKUP" = false ]; then
+    forward+=(--no-backup)
+  fi
+  exec "$CONFIGURE_SCRIPT" "${forward[@]}"
+}
 
-  read -r -p "Ignore battery cutoff when plugged into AC? [Y/n]: " ignore_ac
-  ignore_ac="${ignore_ac:-Y}"
-  case "$ignore_ac" in
-    [Yy]*) write_key_bool "Ignore Battery on AC" true ;;
-    *)     write_key_bool "Ignore Battery on AC" false ;;
-  esac
-
-  read -r -p "Launch Amphetamine at login? [Y/n]: " launch_login
-  launch_login="${launch_login:-Y}"
-  case "$launch_login" in
-    [Yy]*) write_key_bool "Launch At Login" true ;;
-    *)     write_key_bool "Launch At Login" false ;;
-  esac
-
-  read -r -p "Auto-start a session when Amphetamine launches? [Y/n]: " start_on_launch
-  start_on_launch="${start_on_launch:-Y}"
-  case "$start_on_launch" in
-    [Yy]*) write_key_bool "Start Session On Launch" true ;;
-    *)     write_key_bool "Start Session On Launch" false ;;
-  esac
-
-  ok "Custom settings written."
+# Matches configure.sh: /dev/tty must be readable, writable, *and* actually
+# openable. `-r /dev/tty` alone lies in some environments (cron).
+shell_is_interactive() {
+  [ -r /dev/tty ] && [ -w /dev/tty ] && { : > /dev/tty; } 2>/dev/null
 }
 
 choose_mode() {
   if [ -n "$MODE" ]; then return 0; fi
+  if ! shell_is_interactive; then
+    info "No TTY detected — applying Harun's default preset."
+    MODE="default"
+    return 0
+  fi
   echo
   bold "How would you like to install?"
   echo "  1) Use Harun's default settings (recommended)"
-  echo "  2) Configure my own settings interactively"
+  echo "  2) Configure each setting interactively"
   echo "  q) Quit without changing anything"
   echo
-  read -r -p "Choice [1]: " choice
+  # Read from /dev/tty so the prompt still works when the script itself is
+  # piped into bash (the piped stdin is the script, not the user).
+  read -r -p "Choice [1]: " choice < /dev/tty
   choice="${choice:-1}"
   case "$choice" in
     1) MODE="default" ;;
@@ -175,7 +150,11 @@ choose_mode() {
 
 launch_app_prompt() {
   echo
-  read -r -p "Launch Amphetamine now? [Y/n]: " launch
+  if ! shell_is_interactive; then
+    info "No TTY — skipping relaunch prompt. Start Amphetamine manually when ready."
+    return 0
+  fi
+  read -r -p "Launch Amphetamine now? [Y/n]: " launch < /dev/tty
   launch="${launch:-Y}"
   case "$launch" in
     [Yy]*)
@@ -203,13 +182,20 @@ verify() {
 main() {
   bold "Amphetamine MacBook Settings — installer"
   ensure_app_installed
+  choose_mode
+
+  # The custom path delegates entirely to configure.sh (which handles its own
+  # quit / backup / write / relaunch). We exec into it so we don't double-quit
+  # or double-back-up.
+  if [ "$MODE" = "custom" ]; then
+    run_custom_configurator
+    # exec replaces this process; anything below here only runs for --default.
+  fi
+
+  # Default-preset path from here on.
   quit_app
   backup_current
-  choose_mode
-  case "$MODE" in
-    default) apply_default_preset ;;
-    custom)  apply_custom_preset ;;
-  esac
+  apply_default_preset
   verify
   launch_app_prompt
   echo

@@ -1,29 +1,41 @@
 #!/usr/bin/env bash
-# configure.sh — Non-interactive, env-var-driven Amphetamine configurator.
+# configure.sh — Amphetamine configurator, interactive by default.
 #
-# Every setting has a sensible default. Override any of them by exporting the
-# matching env var before running the script, or by passing KEY=VALUE pairs
-# on the command line.
+# Two modes:
 #
-# The script uses `#!/usr/bin/env bash`, so it runs under bash regardless of
-# whether you invoke it from bash, zsh, fish, nushell, or anything else.
+#   1. Interactive (the default). Just run it:
+#        ./scripts/configure.sh
+#      You'll be walked through each setting. Press Enter to keep the default,
+#      or type a new value.
 #
-# Examples:
+#   2. Non-interactive, flag-driven. Pass any setting flag (or
+#      --non-interactive) and the script applies values without prompting:
+#        ./scripts/configure.sh --non-interactive
+#        ./scripts/configure.sh --battery-threshold=25 --no-hide-dock-icon
+#        ./scripts/configure.sh --allow-display-sleep=no
 #
-#   # Use all defaults (same as ./scripts/install.sh --default)
-#   ./scripts/configure.sh
+# Flags (bools accept:  yes|no | y|n | true|false | 1|0 ; or use --no-<flag>):
 #
-#   # Lower the battery threshold from 30% to 20%
-#   BATTERY_THRESHOLD=20 ./scripts/configure.sh
+#   --allow-closed-display-sleep[=BOOL]   --no-allow-closed-display-sleep
+#   --allow-display-sleep[=BOOL]          --no-allow-display-sleep
+#   --battery-threshold=<5..95>
+#   --end-on-battery-below[=BOOL]         --no-end-on-battery-below
+#   --ignore-battery-on-ac[=BOOL]         --no-ignore-battery-on-ac
+#   --start-on-launch[=BOOL]              --no-start-on-launch
+#   --hide-dock-icon[=BOOL]               --no-hide-dock-icon
+#   --allow-screen-saver[=BOOL]           --no-allow-screen-saver
+#   --end-on-forced-sleep[=BOOL]          --no-end-on-forced-sleep
+#   --enable-start-end-notifs[=BOOL]      --no-enable-start-end-notifs
+#   --enable-auto-end-notifs[=BOOL]       --no-enable-auto-end-notifs
 #
-#   # Keep the display on during sessions (thermal risk — read the README first)
-#   ALLOW_DISPLAY_SLEEP=0 ./scripts/configure.sh
+# Control flags:
 #
-#   # Pass values as arguments instead of env vars
-#   ./scripts/configure.sh BATTERY_THRESHOLD=25 HIDE_DOCK_ICON=0
-#
-#   # Print what would be written, don't touch anything
-#   ./scripts/configure.sh --dry-run
+#   -i, --interactive       force interactive mode (default when no flags given)
+#   -N, --non-interactive   force non-interactive mode (use current defaults)
+#   -n, --dry-run           print the plan, write nothing
+#       --no-backup         skip backing up current prefs
+#       --no-relaunch       don't relaunch Amphetamine after writing
+#   -h, --help              this message
 #
 # Defaults match settings/default.plist.
 
@@ -34,78 +46,27 @@ APP_NAME="Amphetamine"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_DIR="$REPO_DIR/scripts/backups"
 
-# ---- Defaults (override via env vars or KEY=VALUE args) ----
+# ---- Defaults (match settings/default.plist) ----
 # Note: "Launch At Login" isn't a plist key — macOS manages that flag via
 # SMLoginItem when you toggle it in Amphetamine's UI. Not configurable here.
-: "${ALLOW_CLOSED_DISPLAY_SLEEP:=0}"   # 0 = stay awake with lid closed  (the point of this repo)
-: "${ALLOW_DISPLAY_SLEEP:=1}"          # 1 = let the internal display sleep during a session
-: "${BATTERY_THRESHOLD:=30}"           # end session when battery drops below this %
-: "${END_ON_BATTERY_BELOW:=1}"         # 1 = enforce BATTERY_THRESHOLD, 0 = never auto-end on battery
-: "${IGNORE_BATTERY_ON_AC:=1}"         # 1 = ignore threshold when plugged in
-: "${START_ON_LAUNCH:=1}"              # 1 = start a session when Amphetamine launches
-: "${HIDE_DOCK_ICON:=1}"               # 1 = menu-bar only, no Dock icon
-: "${ALLOW_SCREEN_SAVER:=0}"           # 0 = suppress the screen saver during sessions
-: "${END_ON_FORCED_SLEEP:=0}"          # 0 = manual sleep does NOT auto-end the session
-: "${ENABLE_START_END_NOTIFS:=0}"      # 0 = quiet start/end notifications
-: "${ENABLE_AUTO_END_NOTIFS:=1}"       # 1 = notify when a session auto-ends (e.g. battery)
-
-# Whitelist of variable names accepted as KEY=VALUE args. Anything else
-# is rejected before it can end up in the environment.
-ALLOWED_KEYS=(
-  ALLOW_CLOSED_DISPLAY_SLEEP
-  ALLOW_DISPLAY_SLEEP
-  BATTERY_THRESHOLD
-  END_ON_BATTERY_BELOW
-  IGNORE_BATTERY_ON_AC
-  START_ON_LAUNCH
-  HIDE_DOCK_ICON
-  ALLOW_SCREEN_SAVER
-  END_ON_FORCED_SLEEP
-  ENABLE_START_END_NOTIFS
-  ENABLE_AUTO_END_NOTIFS
-)
-
-_key_is_allowed() {
-  local candidate="$1" k
-  for k in "${ALLOWED_KEYS[@]}"; do
-    [ "$candidate" = "$k" ] && return 0
-  done
-  return 1
-}
+ALLOW_CLOSED_DISPLAY_SLEEP=0   # 0 = stay awake with lid closed (the point of this repo)
+ALLOW_DISPLAY_SLEEP=1          # 1 = let the internal display sleep during a session
+BATTERY_THRESHOLD=30           # end session when battery drops below this %
+END_ON_BATTERY_BELOW=1         # 1 = enforce BATTERY_THRESHOLD, 0 = never auto-end on battery
+IGNORE_BATTERY_ON_AC=1         # 1 = ignore threshold when plugged in
+START_ON_LAUNCH=1              # 1 = start a session when Amphetamine launches
+HIDE_DOCK_ICON=1               # 1 = menu-bar only, no Dock icon
+ALLOW_SCREEN_SAVER=0           # 0 = suppress the screen saver during sessions
+END_ON_FORCED_SLEEP=0          # 0 = manual sleep does NOT auto-end the session
+ENABLE_START_END_NOTIFS=0      # 0 = quiet start/end notifications
+ENABLE_AUTO_END_NOTIFS=1       # 1 = notify when a session auto-ends (e.g. battery)
 
 BACKUP=true
 DRY_RUN=false
 RELAUNCH=true
-
-# ---- Parse args ----
-for arg in "$@"; do
-  case "$arg" in
-    --no-backup)    BACKUP=false ;;
-    --dry-run|-n)   DRY_RUN=true ;;
-    --no-relaunch)  RELAUNCH=false ;;
-    -h|--help)
-      sed -n '2,32p' "$0"
-      exit 0
-      ;;
-    *=*)
-      # KEY=VALUE pair. Split at the first '=' and whitelist-check the key
-      # before exporting. `export "$arg"` assigns the literal value, so
-      # something like FOO='bar; rm -rf /' gets stored, not executed.
-      key="${arg%%=*}"
-      if ! _key_is_allowed "$key"; then
-        echo "Unknown configuration key: $key" >&2
-        echo "Allowed keys: ${ALLOWED_KEYS[*]}" >&2
-        exit 2
-      fi
-      export "$arg"
-      ;;
-    *)
-      echo "Unknown argument: $arg" >&2
-      echo "See ./scripts/configure.sh --help" >&2
-      exit 2
-      ;;
-  esac
-done
+# MODE is "" until we know. Any setting flag flips it to "non-interactive".
+# -i/-N override. Unset (and no setting flags) → interactive.
+MODE=""
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
@@ -113,39 +74,147 @@ info() { printf '  %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 err()  { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; }
 
-# ---- Validation ----
-validate_bool() {
-  local name="$1" val="$2"
-  case "$val" in
-    0|1|true|false|yes|no) ;;
+# ---- Bool parsing / normalization ----
+# Accept yes/no, y/n, true/false, 0/1. Returns "0" or "1" on stdout.
+# Returns non-zero if the value is not a recognized bool.
+to_bool() {
+  case "${1:-}" in
+    1|true|TRUE|True|yes|YES|Yes|y|Y)   echo 1; return 0 ;;
+    0|false|FALSE|False|no|NO|No|n|N)   echo 0; return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Assign a bool flag value. If the flag came as `--foo` (no value), use 1.
+# If it came as `--no-foo`, use 0. If it came as `--foo=bar`, parse bar.
+# `--foo=` (empty value after `=`) is rejected — be explicit, don't silently
+# fall through to "bare" behavior.
+# Usage: set_bool <varname> <raw_value_or_empty> <default_when_bare> <had_equals> <flag_name>
+set_bool() {
+  local var="$1" raw="$2" bare_default="$3" had_equals="$4" flag="$5" parsed
+  if [ "$had_equals" = "0" ]; then
+    # Bare flag, no value supplied — apply the "on" default.
+    printf -v "$var" '%s' "$bare_default"
+    return 0
+  fi
+  if [ -z "$raw" ]; then
+    err "$flag= was given an empty value (expected yes|no, y|n, true|false, 1|0)"
+    exit 2
+  fi
+  if parsed="$(to_bool "$raw")"; then
+    printf -v "$var" '%s' "$parsed"
+    return 0
+  fi
+  err "Invalid value for $flag: $raw (expected yes|no, y|n, true|false, 1|0)"
+  exit 2
+}
+
+# ---- Parse args ----
+for arg in "$@"; do
+  # Split flag name from optional value at the first '='.
+  name="${arg%%=*}"
+  if [[ "$arg" == *=* ]]; then
+    val="${arg#*=}"
+    had_eq=1
+  else
+    val=""
+    had_eq=0
+  fi
+
+  case "$name" in
+    -h|--help)
+      sed -n '2,40p' "$0"
+      exit 0
+      ;;
+    -i|--interactive)     MODE="interactive" ;;
+    -N|--non-interactive) MODE="non-interactive" ;;
+    -n|--dry-run)         DRY_RUN=true ;;
+    --no-backup)          BACKUP=false ;;
+    --no-relaunch)        RELAUNCH=false ;;
+
+    # Bool setting flags. The --no-* twin sets the opposite.
+    --allow-closed-display-sleep)      set_bool ALLOW_CLOSED_DISPLAY_SLEEP "$val" 1 "$had_eq" "$name" ;;
+    --no-allow-closed-display-sleep)   ALLOW_CLOSED_DISPLAY_SLEEP=0 ;;
+    --allow-display-sleep)             set_bool ALLOW_DISPLAY_SLEEP "$val" 1 "$had_eq" "$name" ;;
+    --no-allow-display-sleep)          ALLOW_DISPLAY_SLEEP=0 ;;
+    --end-on-battery-below)            set_bool END_ON_BATTERY_BELOW "$val" 1 "$had_eq" "$name" ;;
+    --no-end-on-battery-below)         END_ON_BATTERY_BELOW=0 ;;
+    --ignore-battery-on-ac)            set_bool IGNORE_BATTERY_ON_AC "$val" 1 "$had_eq" "$name" ;;
+    --no-ignore-battery-on-ac)         IGNORE_BATTERY_ON_AC=0 ;;
+    --start-on-launch)                 set_bool START_ON_LAUNCH "$val" 1 "$had_eq" "$name" ;;
+    --no-start-on-launch)              START_ON_LAUNCH=0 ;;
+    --hide-dock-icon)                  set_bool HIDE_DOCK_ICON "$val" 1 "$had_eq" "$name" ;;
+    --no-hide-dock-icon)               HIDE_DOCK_ICON=0 ;;
+    --allow-screen-saver)              set_bool ALLOW_SCREEN_SAVER "$val" 1 "$had_eq" "$name" ;;
+    --no-allow-screen-saver)           ALLOW_SCREEN_SAVER=0 ;;
+    --end-on-forced-sleep)             set_bool END_ON_FORCED_SLEEP "$val" 1 "$had_eq" "$name" ;;
+    --no-end-on-forced-sleep)          END_ON_FORCED_SLEEP=0 ;;
+    --enable-start-end-notifs)         set_bool ENABLE_START_END_NOTIFS "$val" 1 "$had_eq" "$name" ;;
+    --no-enable-start-end-notifs)      ENABLE_START_END_NOTIFS=0 ;;
+    --enable-auto-end-notifs)          set_bool ENABLE_AUTO_END_NOTIFS "$val" 1 "$had_eq" "$name" ;;
+    --no-enable-auto-end-notifs)       ENABLE_AUTO_END_NOTIFS=0 ;;
+
+    # Integer setting flag.
+    --battery-threshold)
+      if [ -z "$val" ]; then
+        err "--battery-threshold needs a value (e.g. --battery-threshold=25)"
+        exit 2
+      fi
+      if ! [[ "$val" =~ ^[0-9]+$ ]] || (( val < 5 || val > 95 )); then
+        err "--battery-threshold must be an integer between 5 and 95 (got: $val)"
+        exit 2
+      fi
+      BATTERY_THRESHOLD="$val"
+      ;;
+
     *)
-      err "$name must be 0 or 1 (got: $val)"
-      exit 3
+      err "Unknown argument: $arg"
+      info "Run: $0 --help"
+      exit 2
       ;;
   esac
-}
 
-# Normalize booleans to 0/1
-normalize_bool() {
-  case "$1" in
-    1|true|yes)  echo 1 ;;
-    0|false|no)  echo 0 ;;
-    *) echo "$1" ;;
+  # Any setting flag implies non-interactive (unless --interactive was explicit).
+  case "$name" in
+    --allow-closed-display-sleep|--no-allow-closed-display-sleep|\
+    --allow-display-sleep|--no-allow-display-sleep|\
+    --end-on-battery-below|--no-end-on-battery-below|\
+    --ignore-battery-on-ac|--no-ignore-battery-on-ac|\
+    --start-on-launch|--no-start-on-launch|\
+    --hide-dock-icon|--no-hide-dock-icon|\
+    --allow-screen-saver|--no-allow-screen-saver|\
+    --end-on-forced-sleep|--no-end-on-forced-sleep|\
+    --enable-start-end-notifs|--no-enable-start-end-notifs|\
+    --enable-auto-end-notifs|--no-enable-auto-end-notifs|\
+    --battery-threshold)
+      [ -z "$MODE" ] && MODE="non-interactive"
+      ;;
   esac
-}
-
-for v in ALLOW_CLOSED_DISPLAY_SLEEP ALLOW_DISPLAY_SLEEP END_ON_BATTERY_BELOW \
-         IGNORE_BATTERY_ON_AC START_ON_LAUNCH HIDE_DOCK_ICON \
-         ALLOW_SCREEN_SAVER END_ON_FORCED_SLEEP ENABLE_START_END_NOTIFS \
-         ENABLE_AUTO_END_NOTIFS; do
-  validate_bool "$v" "${!v}"
-  printf -v "$v" '%s' "$(normalize_bool "${!v}")"
 done
 
-if ! [[ "$BATTERY_THRESHOLD" =~ ^[0-9]+$ ]] || \
-   (( BATTERY_THRESHOLD < 5 || BATTERY_THRESHOLD > 95 )); then
-  err "BATTERY_THRESHOLD must be an integer between 5 and 95 (got: $BATTERY_THRESHOLD)"
-  exit 3
+# Default mode: interactive. But if the shell has no controlling terminal
+# (CI, piped `bash < script`, crontab, remote shell without TTY allocation,
+# etc.) then prompting is impossible — fall back to non-interactive silently.
+# If the user explicitly asked for interactive mode in a non-TTY context,
+# that's an error — tell them.
+shell_is_interactive() {
+  # A controlling TTY exists if /dev/tty is readable AND we can open it.
+  # Using `-r /dev/tty` alone is not enough: it's readable in cron but opening
+  # it will fail. Try an actual open to be sure.
+  [ -r /dev/tty ] && [ -w /dev/tty ] && { : > /dev/tty; } 2>/dev/null
+}
+
+if [ -z "$MODE" ]; then
+  if shell_is_interactive; then
+    MODE="interactive"
+  else
+    MODE="non-interactive"
+    info "No TTY detected — running non-interactively with defaults."
+  fi
+elif [ "$MODE" = "interactive" ] && ! shell_is_interactive; then
+  err "--interactive was requested but this shell has no controlling terminal."
+  info "Use --non-interactive (with flags) for scripted / piped runs."
+  exit 2
 fi
 
 # ---- Pre-flight ----
@@ -153,6 +222,91 @@ if [ ! -d "/Applications/$APP_NAME.app" ]; then
   err "$APP_NAME is not installed. Get it from the Mac App Store:"
   info "https://apps.apple.com/us/app/amphetamine/id937984704"
   exit 1
+fi
+
+# ---- Interactive prompts ----
+ask_bool() {
+  # $1 = prompt, $2 = var name
+  local prompt="$1" var="$2" current="${!2}" reply default_hint parsed
+  case "$current" in
+    1) default_hint="Y/n" ;;
+    *) default_hint="y/N" ;;
+  esac
+  while :; do
+    # Read directly from /dev/tty so prompts work even if stdin was piped.
+    if ! read -r -p "  $prompt [$default_hint]: " reply < /dev/tty; then
+      echo
+      return 1
+    fi
+    reply="${reply:-$current}"
+    if parsed="$(to_bool "$reply")"; then
+      printf -v "$var" '%s' "$parsed"
+      return 0
+    fi
+    warn "Please answer y or n (or press Enter to keep the default)."
+  done
+}
+
+ask_int() {
+  # $1 = prompt, $2 = var name, $3 = min, $4 = max
+  local prompt="$1" var="$2" min="$3" max="$4" current="${!2}" reply
+  while :; do
+    if ! read -r -p "  $prompt [$current]: " reply < /dev/tty; then
+      echo
+      return 1
+    fi
+    reply="${reply:-$current}"
+    if [[ "$reply" =~ ^[0-9]+$ ]] && (( reply >= min && reply <= max )); then
+      printf -v "$var" '%s' "$reply"
+      return 0
+    fi
+    warn "Please enter an integer between $min and $max."
+  done
+}
+
+run_interactive() {
+  bold "Amphetamine configuration — interactive walkthrough"
+  info "Press Enter to keep the default shown in brackets."
+  echo
+
+  # Asking the user about "Allow Closed-Display Sleep" directly would read
+  # weird — people think in terms of "stay awake with lid closed". Translate
+  # once: ask the friendly question into STAY_AWAKE_LID_CLOSED, then flip.
+  local STAY_AWAKE_LID_CLOSED
+  case "$ALLOW_CLOSED_DISPLAY_SLEEP" in
+    0) STAY_AWAKE_LID_CLOSED=1 ;;
+    *) STAY_AWAKE_LID_CLOSED=0 ;;
+  esac
+  ask_bool 'Stay awake with the lid closed? (the core use case)'    STAY_AWAKE_LID_CLOSED
+  case "$STAY_AWAKE_LID_CLOSED" in
+    1) ALLOW_CLOSED_DISPLAY_SLEEP=0 ;;
+    *) ALLOW_CLOSED_DISPLAY_SLEEP=1 ;;
+  esac
+
+  ask_bool 'Let the display sleep during a session? (saves battery and heat)' ALLOW_DISPLAY_SLEEP
+  ask_bool 'Auto-end the session when battery gets low?'            END_ON_BATTERY_BELOW
+  if [ "$END_ON_BATTERY_BELOW" = "1" ]; then
+    ask_int  'Battery percent to end the session at (5–95)?'        BATTERY_THRESHOLD 5 95
+  fi
+  ask_bool 'Ignore the battery threshold when plugged into AC?'     IGNORE_BATTERY_ON_AC
+  ask_bool 'Start a session automatically when Amphetamine launches?' START_ON_LAUNCH
+  ask_bool 'Hide the Dock icon (menu-bar only)?'                    HIDE_DOCK_ICON
+
+  # Advanced settings — skip by default.
+  local SHOW_ADVANCED=0
+  ask_bool 'Configure advanced settings (notifications, screen saver, forced sleep)?' SHOW_ADVANCED
+
+  if [ "$SHOW_ADVANCED" = "1" ]; then
+    ask_bool 'Allow the screen saver during a session?'             ALLOW_SCREEN_SAVER
+    ask_bool 'End the session if the Mac is forced to sleep?'       END_ON_FORCED_SLEEP
+    ask_bool 'Show session start/end notifications?'                ENABLE_START_END_NOTIFS
+    ask_bool 'Show a notification when a session auto-ends?'        ENABLE_AUTO_END_NOTIFS
+  fi
+  echo
+}
+
+if [ "$MODE" = "interactive" ]; then
+  run_interactive
 fi
 
 # ---- Show plan ----
@@ -173,6 +327,20 @@ echo
 if [ "$DRY_RUN" = true ]; then
   warn "Dry run — no changes will be written."
   exit 0
+fi
+
+# Interactive mode confirms before writing.
+if [ "$MODE" = "interactive" ] && [ -r /dev/tty ]; then
+  reply=""
+  read -r -p "  Apply these settings? [Y/n]: " reply < /dev/tty || true
+  reply="${reply:-Y}"
+  case "$reply" in
+    [Yy]|[Yy][Ee][Ss]) ;;
+    *)
+      info "Aborted. Nothing was written."
+      exit 0
+      ;;
+  esac
 fi
 
 # ---- Quit Amphetamine (required before writing prefs) ----
@@ -203,8 +371,8 @@ if [ "$BACKUP" = true ]; then
 fi
 
 # ---- Apply ----
-write_bool() { defaults write "$BUNDLE_ID" "$1" -bool    "$2"; }
-write_int()  { defaults write "$BUNDLE_ID" "$1" -int     "$2"; }
+write_bool() { defaults write "$BUNDLE_ID" "$1" -bool "$2"; }
+write_int()  { defaults write "$BUNDLE_ID" "$1" -int  "$2"; }
 
 write_bool 'Allow Closed-Display Sleep'          "$ALLOW_CLOSED_DISPLAY_SLEEP"
 write_bool 'Allow Display Sleep'                 "$ALLOW_DISPLAY_SLEEP"

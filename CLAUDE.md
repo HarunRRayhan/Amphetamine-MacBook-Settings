@@ -5,12 +5,27 @@ This repo packages opinionated [Amphetamine](https://apps.apple.com/us/app/amphe
 ## What the user probably wants
 
 1. **Install the default preset** — run `./scripts/install.sh --default` (or `./scripts/install.sh` and choose option 1).
-2. **Install with custom values** — run `./scripts/install.sh --custom` for the interactive walkthrough, OR use `./scripts/configure.sh` with env vars if they already know the exact values they want (e.g. `BATTERY_THRESHOLD=25 ./scripts/configure.sh`).
-3. **Add shell commands** (`amph-on`, `amph-off`, `amph-status`, `amph-toggle`, `amph-config`) — run `./scripts/shell-helpers.sh install`. Works under bash and zsh.
-4. **Reset Amphetamine back to stock** — run `./scripts/reset.sh`.
-5. **Export their current settings** — run `./scripts/export.sh [path]`.
+2. **Walk through each setting interactively** — run `./scripts/configure.sh`. It's interactive by default; the user is prompted for every setting. (`./scripts/install.sh --custom` also delegates here.)
+3. **Change a specific value without prompts** — use `configure.sh` with the relevant flag, e.g. `./scripts/configure.sh --battery-threshold=25` or `./scripts/configure.sh --no-hide-dock-icon`. Any setting flag implies `--non-interactive`.
+4. **Add shell commands** (`amph-on`, `amph-off`, `amph-status`, `amph-toggle`, `amph-config`) — run `./scripts/shell-helpers.sh install`. Works under bash and zsh.
+5. **Reset Amphetamine back to stock** — run `./scripts/reset.sh`.
+6. **Export their current settings** — run `./scripts/export.sh [path]`.
 
-If it's ambiguous which one they want, ask. Default to option 1 when they say "install the settings" without qualification. If they name a specific value ("battery cutoff 20%", "show the Dock icon"), prefer `configure.sh` with env vars over the interactive installer — it's a single reproducible command.
+If it's ambiguous which one they want, ask. Default to option 1 when they say "install the settings" without qualification. If they name a specific value ("battery cutoff 20%", "show the Dock icon"), prefer `configure.sh` with flags — it's a single reproducible command.
+
+### configure.sh at a glance
+
+- Interactive by default: `./scripts/configure.sh`
+- Force non-interactive: `--non-interactive` (or pass any setting flag)
+- Force interactive: `-i` / `--interactive` (errors out if there's no TTY)
+- Dry run: `-n` / `--dry-run`
+- Bool flags: `--foo`, `--foo=yes|no|1|0|true|false`, or `--no-foo`
+- Auto-falls back to non-interactive when there's no controlling TTY (piped, cron, SSH without `-t`)
+- `./scripts/configure.sh --help` lists every flag
+
+### On `Launch At Login`
+
+This is **not** a plist key. macOS stores it via SMLoginItem. There is no flag for it in `configure.sh`. If the user asks to toggle it, tell them to flip it in Amphetamine's Preferences UI. `amph-config` queries the current state via System Events.
 
 ## Pre-flight checks
 
@@ -22,16 +37,18 @@ Before running any script, verify:
 ## Running the installer
 
 ```bash
-./scripts/install.sh              # interactive
+./scripts/install.sh              # menu: default preset vs. configure.sh
 ./scripts/install.sh --default    # skip the menu, apply default preset
-./scripts/install.sh --custom     # skip the menu, run interactive config
+./scripts/install.sh --custom     # skip the menu, hand off to configure.sh (interactive)
 ```
 
-The installer:
+The installer (default preset path):
 1. Quits Amphetamine (required — otherwise the running app overwrites the prefs on quit).
 2. Backs up current settings to `scripts/backups/amphetamine-backup-YYYYMMDD-HHMMSS.plist`.
-3. Applies the chosen preset via `defaults import` or individual `defaults write` calls.
+3. Applies the preset via `defaults import settings/default.plist`.
 4. Prints verification output and optionally relaunches Amphetamine.
+
+For the custom path, `install.sh --custom` execs `configure.sh -i`, which does its own quit / backup / write / relaunch.
 
 ## Verifying after install
 
@@ -39,7 +56,10 @@ The installer:
 defaults read com.if.Amphetamine 'Allow Closed-Display Sleep'   # expect: 0
 defaults read com.if.Amphetamine 'Allow Display Sleep'          # expect: 1
 defaults read com.if.Amphetamine 'Ignore Battery on AC'         # expect: 1
-defaults read com.if.Amphetamine 'Launch At Login'              # expect: 1
+defaults read com.if.Amphetamine 'Low Battery Percent'          # expect: 30 (or user's value)
+
+# Launch At Login lives in SMLoginItem, not the plist:
+osascript -e 'tell application "System Events" to get login item "Amphetamine" exists'
 ```
 
 You can also check macOS power assertions to confirm a session is running:
