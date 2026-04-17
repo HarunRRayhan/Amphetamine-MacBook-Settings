@@ -111,15 +111,26 @@ amph-status() {
 
 amph-on() {
   _amph_start_app_if_needed || { printf 'Failed to launch Amphetamine\n' >&2; return 1; }
-  osascript <<'APPLESCRIPT' >/dev/null 2>&1
+  # Documented infinite-duration options per Amphetamine.sdef:
+  #   "For an infinite duration session, use 0 for duration, and 0 for interval."
+  # See /Applications/Amphetamine.app/Contents/Resources/Amphetamine.sdef
+  local out rc
+  out="$(osascript 2>&1 <<'APPLESCRIPT'
 tell application "Amphetamine"
-  start new session with options {duration:0, displaySleepAllowed:true}
+  start new session with options {duration:0, interval:0, displaySleepAllowed:true}
 end tell
 APPLESCRIPT
-  # Fallback: use the menu bar if AppleScript dictionary isn't accepted
-  local rc=$?
+)"
+  rc=$?
   if [ "$rc" -ne 0 ]; then
-    osascript -e 'tell application "System Events" to tell process "Amphetamine" to click menu bar item 1 of menu bar 2' >/dev/null 2>&1 || true
+    printf 'amph-on: AppleScript failed (rc=%s): %s\n' "$rc" "$out" >&2
+    printf 'amph-on: falling back to menu-bar click\n' >&2
+    local fallback_out
+    fallback_out="$(osascript -e 'tell application "System Events" to tell process "Amphetamine" to click menu bar item 1 of menu bar 2' 2>&1)"
+    if [ $? -ne 0 ]; then
+      printf 'amph-on: menu-bar fallback also failed: %s\n' "$fallback_out" >&2
+      return 1
+    fi
   fi
   sleep 0.5
   amph-status
@@ -130,9 +141,17 @@ amph-off() {
     printf 'Amphetamine: not running\n'
     return 0
   fi
-  osascript <<'APPLESCRIPT' >/dev/null 2>&1
-tell application "Amphetamine" to end all sessions
+  # Amphetamine's dictionary defines "end session" (not "end all sessions").
+  local out rc
+  out="$(osascript 2>&1 <<'APPLESCRIPT'
+tell application "Amphetamine" to end session
 APPLESCRIPT
+)"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    printf 'amph-off: AppleScript failed (rc=%s): %s\n' "$rc" "$out" >&2
+    return 1
+  fi
   sleep 0.3
   amph-status || true
 }
