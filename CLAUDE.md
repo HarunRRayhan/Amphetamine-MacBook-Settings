@@ -4,12 +4,13 @@ This repo packages opinionated [Amphetamine](https://apps.apple.com/us/app/amphe
 
 ## What the user probably wants
 
-1. **Install the default preset** — run `./scripts/install.sh` and choose option 1.
-2. **Install with custom values** — run `./scripts/install.sh` and choose option 2 (interactive).
-3. **Reset Amphetamine back to stock** — run `./scripts/reset.sh`.
-4. **Export their current settings** — run `./scripts/export.sh [path]`.
+1. **Install the default preset** — run `./scripts/install.sh --default` (or `./scripts/install.sh` and choose option 1).
+2. **Install with custom values** — run `./scripts/install.sh --custom` for the interactive walkthrough, OR use `./scripts/configure.sh` with env vars if they already know the exact values they want (e.g. `BATTERY_THRESHOLD=25 ./scripts/configure.sh`).
+3. **Add shell commands** (`amph-on`, `amph-off`, `amph-status`, `amph-toggle`, `amph-config`) — run `./scripts/shell-helpers.sh install`. Works under bash and zsh.
+4. **Reset Amphetamine back to stock** — run `./scripts/reset.sh`.
+5. **Export their current settings** — run `./scripts/export.sh [path]`.
 
-If it's ambiguous which one they want, ask — but default to option 1 when they say "install the settings" without qualification.
+If it's ambiguous which one they want, ask. Default to option 1 when they say "install the settings" without qualification. If they name a specific value ("battery cutoff 20%", "show the Dock icon"), prefer `configure.sh` with env vars over the interactive installer — it's a single reproducible command.
 
 ## Pre-flight checks
 

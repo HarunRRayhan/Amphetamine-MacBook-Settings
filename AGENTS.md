@@ -18,17 +18,23 @@ It packages opinionated [Amphetamine](https://apps.apple.com/us/app/amphetamine/
 
 - `settings/default.plist` — the maintainer's default preferences
 - `scripts/install.sh` — interactive installer (default preset or custom)
+- `scripts/configure.sh` — non-interactive configurator, env-var driven (runs under bash, safe to invoke from zsh/fish/etc.)
+- `scripts/shell-helpers.sh` — sourceable helpers for bash and zsh (`amph-on`, `amph-off`, `amph-status`, `amph-toggle`, `amph-config`)
 - `scripts/export.sh` — export current prefs to a plist
 - `scripts/reset.sh` — reset Amphetamine to stock defaults
 
 ## User intents → what to run
 
-| User says…                                      | Run                                      |
-| ----------------------------------------------- | ---------------------------------------- |
-| "Install these settings" / "Set up Amphetamine" | `./scripts/install.sh --default`         |
-| "Let me pick my own values"                     | `./scripts/install.sh --custom`          |
-| "Revert / reset Amphetamine"                    | `./scripts/reset.sh`                     |
-| "Back up my current settings"                   | `./scripts/export.sh ~/Desktop/amphetamine-backup.plist` |
+| User says…                                               | Run                                                      |
+| -------------------------------------------------------- | -------------------------------------------------------- |
+| "Install these settings" / "Set up Amphetamine"          | `./scripts/install.sh --default`                         |
+| "Let me pick my own values"                              | `./scripts/install.sh --custom`                          |
+| "Configure with a 25% battery cutoff" (or any one value) | `BATTERY_THRESHOLD=25 ./scripts/configure.sh`            |
+| "Show the Dock icon"                                     | `HIDE_DOCK_ICON=0 ./scripts/configure.sh`                |
+| "Preview the change without writing"                     | `./scripts/configure.sh --dry-run`                       |
+| "Add shell shortcuts" / "I want `amph-on` / `amph-off`"  | `./scripts/shell-helpers.sh install`                     |
+| "Revert / reset Amphetamine"                             | `./scripts/reset.sh`                                     |
+| "Back up my current settings"                            | `./scripts/export.sh ~/Desktop/amphetamine-backup.plist` |
 
 When in doubt, ask the user before making changes. Always prefer running the provided scripts over writing `defaults` values yourself — the scripts handle quitting Amphetamine, backing up, and verifying.
 
