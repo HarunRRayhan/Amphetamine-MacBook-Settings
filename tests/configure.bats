@@ -18,7 +18,10 @@ setup() {
   run "$CONFIGURE" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"configure.sh"* ]]
-  [[ "$output" == *"Usage"* ]] || [[ "$output" == *"Interactive"* ]]
+  # Help text opens with "Interactive (the default)" — assert that directly
+  # rather than a made-up "Usage" header.
+  [[ "$output" == *"Interactive"* ]]
+  [[ "$output" == *"--battery-threshold"* ]]
 }
 
 @test "configure -h works the same as --help" {
@@ -162,6 +165,79 @@ setup() {
   run bash -c "'$CONFIGURE' --hide-dock-icon=no --dry-run < /dev/null"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Hide Dock Icon                = 0"* ]]
+}
+
+# --- Coverage for every setting flag ------------------------------------
+# One meaningful test per flag family. The test direction is chosen so it
+# actually verifies parser wiring: flip a default=0 value up with the bare
+# flag, flip a default=1 value down with the --no- twin.
+#   default = 0  →  test bare flag moves plan line to 1
+#   default = 1  →  test --no- flag moves plan line to 0
+# (Defaults are defined at the top of configure.sh.)
+
+@test "bool flag: --no-start-on-launch flips Start Session At Launch to 0" {
+  # Default is 1.
+  run "$CONFIGURE" --no-start-on-launch --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Start Session At Launch       = 0"* ]]
+}
+
+@test "bool flag: --allow-screen-saver flips Allow Screen Saver to 1" {
+  # Default is 0.
+  run "$CONFIGURE" --allow-screen-saver --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Allow Screen Saver            = 1"* ]]
+}
+
+@test "bool flag: --end-on-forced-sleep flips End On Forced Sleep to 1" {
+  # Default is 0.
+  run "$CONFIGURE" --end-on-forced-sleep --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"End On Forced Sleep           = 1"* ]]
+}
+
+@test "bool flag: --enable-start-end-notifs flips Session Start/End Notifs to 1" {
+  # Default is 0.
+  run "$CONFIGURE" --enable-start-end-notifs --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Session Start/End Notifs      = 1"* ]]
+}
+
+@test "bool flag: --no-enable-auto-end-notifs flips Auto-End Notifs to 0" {
+  # Default is 1.
+  run "$CONFIGURE" --no-enable-auto-end-notifs --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Auto-End Notifs               = 0"* ]]
+}
+
+@test "bool flag: --no-end-on-battery-below flips End Session On Low Battery to 0" {
+  # Default is 1.
+  run "$CONFIGURE" --no-end-on-battery-below --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"End Session On Low Battery    = 0"* ]]
+}
+
+@test "bool flag: --no-ignore-battery-on-ac flips Ignore Battery on AC to 0" {
+  # Default is 1.
+  run "$CONFIGURE" --no-ignore-battery-on-ac --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Ignore Battery on AC          = 0"* ]]
+}
+
+# --- Control flags (no plan line to check — verify they're accepted) -----
+
+@test "control flag: --no-backup is accepted and doesn't error" {
+  # The plan doesn't advertise backup state; we just confirm the parser
+  # recognizes the flag (and implies --non-interactive).
+  run "$CONFIGURE" --no-backup --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Amphetamine configuration plan"* ]]
+}
+
+@test "control flag: --no-relaunch is accepted and doesn't error" {
+  run "$CONFIGURE" --no-relaunch --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Amphetamine configuration plan"* ]]
 }
 
 # --- Combining flags -----------------------------------------------------

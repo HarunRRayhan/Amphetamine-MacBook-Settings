@@ -31,7 +31,9 @@ setup() {
 @test "install rejects an unknown flag with exit 2" {
   run "$INSTALL" --not-a-real-flag
   [ "$status" -eq 2 ]
-  [[ "$output" == *"Unknown argument"* ]] || [[ "$stderr" == *"Unknown argument"* ]]
+  # bats merges stderr into $output by default (no --separate-stderr here),
+  # so a single check on $output is sufficient.
+  [[ "$output" == *"Unknown argument"* ]]
 }
 
 # --- Pre-flight (bundle missing) ----------------------------------------
@@ -49,10 +51,11 @@ setup() {
 
 @test "install --default applies the default preset (calls defaults import)" {
   # No TTY, so install.sh auto-picks the default mode. Pass --default
-  # explicitly to belt-and-suspenders it.
-  run bash -c "'$INSTALL' --default < /dev/null"
+  # explicitly to belt-and-suspenders it. Pass --no-backup so the stubbed
+  # `defaults export` doesn't truncate a real backup file into the repo.
+  run bash -c "'$INSTALL' --default --no-backup < /dev/null"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"default preset"* ]] || [[ "$output" == *"default"* ]]
+  [[ "$output" == *"default"* ]]
   [[ "$output" == *"Done"* ]]
   # Our defaults stub logs every call to $STUB_LOG. A successful run should
   # have `defaults import com.if.Amphetamine <path>/default.plist`.
@@ -62,10 +65,12 @@ setup() {
 }
 
 @test "install without flags and no TTY auto-picks the default preset" {
-  run bash -c "'$INSTALL' < /dev/null"
+  # --no-backup for the same reason as above — the auto-picked default path
+  # would otherwise try to back up prefs into the real repo.
+  run bash -c "'$INSTALL' --no-backup < /dev/null"
   [ "$status" -eq 0 ]
   [[ "$output" == *"No TTY detected"* ]]
-  [[ "$output" == *"default preset"* ]] || [[ "$output" == *"default"* ]]
+  [[ "$output" == *"default"* ]]
   run grep -F "defaults import" "$STUB_LOG"
   [ "$status" -eq 0 ]
 }
