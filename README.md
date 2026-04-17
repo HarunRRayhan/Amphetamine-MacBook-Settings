@@ -114,19 +114,38 @@ codex
 
 Codex CLI reads [`AGENTS.md`](./AGENTS.md) automatically. Same prompts as Claude Code work.
 
-### OpenCode
+### OpenClaw
+
+[OpenClaw](https://docs.openclaw.ai) is a self-hosted AI gateway with a CLI and multi-channel delivery (Discord, Slack, iMessage, Telegram, WhatsApp, and more). From the repo root:
 
 ```bash
-opencode
+openclaw
 ```
 
-OpenCode also reads `AGENTS.md`. Clone the repo, launch OpenCode from the repo root, and ask it to install the settings.
+OpenClaw reads [`AGENTS.md`](./AGENTS.md) when running agent sessions against this repo, so it picks up the same guidance as Codex CLI. You can run the installer directly through an OpenClaw session ("Install these Amphetamine settings on this machine") or route the same prompt through any channel you've wired into your OpenClaw gateway (e.g. ask Claude via iMessage to SSH in and run `./scripts/install.sh --default`).
 
-### Hermes
+Docs: [docs.openclaw.ai](https://docs.openclaw.ai)
 
-> **Maintainer note:** please clarify which "Hermes" tool this refers to — I'll tailor instructions accordingly. If it's a general CLI-based AI agent that reads `AGENTS.md`, the OpenAI Codex flow above works identically.
+### Hermes Agent
 
-If you use any other AI coding CLI (Cursor, Windsurf, Aider, continue.dev, etc.), they all follow the same pattern: clone the repo, open it in the tool, ask the assistant to install these Amphetamine settings. The `AGENTS.md` file gives them everything they need.
+[Hermes Agent](https://hermes-agent.nousresearch.com) (Nous Research) is a self-improving AI agent with a `hermes` CLI and optional messaging gateway. From the repo root:
+
+```bash
+hermes
+```
+
+Hermes reads [`AGENTS.md`](./AGENTS.md) too. Prompt it the same way as the others:
+
+> *"Install these Amphetamine settings on my Mac."*
+> *"Revert Amphetamine to its stock defaults."*
+
+If you run Hermes on a remote box and route it through Telegram / Signal / Slack via the Hermes gateway, you can trigger the installer from your phone — handy if you're managing several Macs.
+
+Docs: [hermes-agent.nousresearch.com/docs](https://hermes-agent.nousresearch.com/docs)
+
+### Any other AI coding CLI
+
+Tools like Cursor, Windsurf, Aider, continue.dev, and most other modern AI coding CLIs follow the same pattern: clone the repo, open it in the tool, ask the assistant to install these Amphetamine settings. The [`AGENTS.md`](./AGENTS.md) file gives them everything they need.
 
 ---
 

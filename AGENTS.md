@@ -1,6 +1,12 @@
 # AGENTS.md
 
-Instructions for AI coding agents working in this repository. This file is read by OpenAI Codex CLI, OpenCode, Cursor, Windsurf, Aider, and most other modern AI coding tools that follow the [AGENTS.md convention](https://agents.md).
+Instructions for AI coding agents working in this repository. This file is read by:
+
+- [OpenAI Codex CLI](https://openai.com/codex)
+- [OpenClaw](https://docs.openclaw.ai)
+- [Hermes Agent](https://hermes-agent.nousresearch.com) (Nous Research)
+- Cursor, Windsurf, Aider, continue.dev
+- Any other agent that follows the [AGENTS.md convention](https://agents.md)
 
 Claude Code reads `CLAUDE.md` separately — the two files intentionally overlap so each tool has a self-contained reference.
 
