@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Stub for `pkill`. No-op in tests.
+echo "pkill $*" >> "${STUB_LOG:-/dev/null}"
+exit 0

@@ -50,6 +50,8 @@ BUNDLE_ID="com.if.Amphetamine"
 APP_NAME="Amphetamine"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_DIR="$REPO_DIR/scripts/backups"
+# Test seam: lets CI (and unusual installs) point at a different Amphetamine bundle.
+APP_PATH="${AMPHETAMINE_APP_PATH:-/Applications/$APP_NAME.app}"
 
 # ---- Defaults (match settings/default.plist) ----
 # Note: "Launch At Login" isn't a plist key — macOS manages that flag via
@@ -225,7 +227,7 @@ elif [ "$MODE" = "interactive" ] && ! shell_is_interactive; then
 fi
 
 # ---- Pre-flight ----
-if [ ! -d "/Applications/$APP_NAME.app" ]; then
+if [ ! -d "$APP_PATH" ]; then
   err "$APP_NAME is not installed. Get it from the Mac App Store:"
   info "https://apps.apple.com/us/app/amphetamine/id937984704"
   exit 1
