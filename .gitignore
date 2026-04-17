@@ -5,3 +5,7 @@
 .idea/
 .vscode/
 scripts/backups/
+
+# Ephemeral helper scripts used by tooling
+.git-push.sh
+.gh-*.sh
