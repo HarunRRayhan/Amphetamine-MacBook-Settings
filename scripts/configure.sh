@@ -255,6 +255,7 @@ maybe_offer_gum_install() {
   info "     https://github.com/charmbracelet/gum"
   local reply
   if ! read -r -p "  Install it now via Homebrew? [y/N]: " reply < /dev/tty; then
+    USE_GUM=no
     return 0
   fi
   case "${reply:-N}" in
@@ -268,7 +269,8 @@ maybe_offer_gum_install() {
       fi
       ;;
     *)
-      info "Skipping gum — using plain prompts. Set --no-gum to silence this next time."
+      USE_GUM=no
+      info "Skipping gum — using plain prompts. Pass --no-gum to skip this prompt next time."
       ;;
   esac
   echo
@@ -295,15 +297,22 @@ ui_banner() {
 
 # ui_confirm <prompt> <default: yes|no>  → returns 0 for yes, 1 for no.
 # Wraps `gum confirm` (which also returns 0/1) and falls back to plain read.
+# If gum is killed by a signal (e.g. Ctrl+C → 130), we abort the whole script
+# instead of silently continuing as if the user answered "no".
 ui_confirm() {
-  local prompt="$1" default="${2:-yes}" reply default_hint
+  local prompt="$1" default="${2:-yes}" reply default_hint rc
   if have_gum; then
     if [ "$default" = "yes" ]; then
       gum confirm --default=true  "$prompt"
     else
       gum confirm --default=false "$prompt"
     fi
-    return $?
+    rc=$?
+    if [ "$rc" -ge 128 ]; then
+      echo
+      exit "$rc"
+    fi
+    return "$rc"
   fi
   case "$default" in
     yes) default_hint="Y/n" ;;
@@ -324,10 +333,17 @@ ui_confirm() {
 }
 
 # ui_input <prompt> <default>  → echoes the chosen value on stdout.
+# Ctrl+C inside `gum input` (exit >=128) aborts the script rather than being
+# silently treated as "keep the default".
 ui_input() {
-  local prompt="$1" default="$2" reply
+  local prompt="$1" default="$2" reply rc
   if have_gum; then
     reply="$(gum input --prompt "$prompt " --placeholder "$default" --value "$default")"
+    rc=$?
+    if [ "$rc" -ge 128 ]; then
+      echo >&2
+      exit "$rc"
+    fi
     # gum returns empty if the user deletes the prefilled value; fall back.
     printf '%s' "${reply:-$default}"
     return 0

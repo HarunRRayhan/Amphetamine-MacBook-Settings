@@ -74,6 +74,9 @@ shell_is_interactive() {
 
 # Offer to install gum via Homebrew. Silent no-op if not interactive, if the
 # user passed --no-gum, if gum is already installed, or if brew isn't available.
+# If the user declines, we flip USE_GUM=no so that (a) have_gum() stays false
+# for the rest of this process and (b) run_custom_configurator forwards
+# --no-gum to configure.sh, preventing a second identical prompt.
 maybe_offer_gum_install() {
   [ "$USE_GUM" = "no" ] && return 0
   command -v gum >/dev/null 2>&1 && return 0
@@ -84,6 +87,7 @@ maybe_offer_gum_install() {
   info "     https://github.com/charmbracelet/gum"
   local reply
   if ! read -r -p "  Install it now via Homebrew? [y/N]: " reply < /dev/tty; then
+    USE_GUM=no
     return 0
   fi
   case "${reply:-N}" in
@@ -97,22 +101,30 @@ maybe_offer_gum_install() {
       fi
       ;;
     *)
-      info "Skipping gum — using plain prompts. Set --no-gum to silence this next time."
+      USE_GUM=no
+      info "Skipping gum — using plain prompts. Pass --no-gum to skip this prompt next time."
       ;;
   esac
   echo
 }
 
 # ui_confirm <prompt> <default: yes|no>  → returns 0 for yes, 1 for no.
+# Ctrl+C (exit >=128) aborts the whole installer instead of being swallowed
+# as a plain "no" by the calling `if`.
 ui_confirm() {
-  local prompt="$1" default="${2:-yes}" reply default_hint
+  local prompt="$1" default="${2:-yes}" reply default_hint rc
   if have_gum; then
     if [ "$default" = "yes" ]; then
       gum confirm --default=true  "$prompt"
     else
       gum confirm --default=false "$prompt"
     fi
-    return $?
+    rc=$?
+    if [ "$rc" -ge 128 ]; then
+      echo
+      exit "$rc"
+    fi
+    return "$rc"
   fi
   case "$default" in
     yes) default_hint="Y/n" ;;
@@ -132,9 +144,15 @@ ui_confirm() {
 # Non-gum path falls back to a numbered prompt matching the previous UX.
 ui_choose() {
   local header="$1"; shift
+  local rc
   if have_gum; then
     gum choose --header "$header" "$@"
-    return $?
+    rc=$?
+    if [ "$rc" -ge 128 ]; then
+      echo
+      exit "$rc"
+    fi
+    return "$rc"
   fi
   # Plain fallback: numbered menu. Caller handles "Quit" separately.
   echo
